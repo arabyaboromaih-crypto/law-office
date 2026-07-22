@@ -147,6 +147,82 @@ export interface CaseClient {
   id?: string;
 }
 
+// Expert Referral (إحالة القضية إلى الخبراء)
+export interface ExpertSession {
+  id: string;
+  date: string; // YYYY-MM-DD
+  time?: string; // HH:MM
+  sessionType: 'معاينة' | 'مناقشة' | 'استلام مستندات' | 'سماع أقوال' | 'أخرى' | string;
+  location: string;
+  decisionOrAction: string;
+  nextSessionDate?: string;
+  status: 'pending' | 'completed' | 'postponed' | string;
+  notes?: string;
+  createdByName?: string;
+  createdAt?: string;
+}
+
+export interface ExpertDocument {
+  id: string;
+  title: string;
+  submissionDate: string; // YYYY-MM-DD
+  submittedBy?: string;
+  fileUrl?: string;
+  storagePath?: string;
+  fileName?: string;
+  notes?: string;
+}
+
+export interface ExpertRequest {
+  id: string;
+  requestText: string;
+  requestedAt: string;
+  deadlineDate?: string;
+  status: 'قيد التحضير' | 'تم التقديم' | 'مطلوب تعقيب' | string;
+  assignedLawyerName?: string;
+  notes?: string;
+}
+
+export interface ExpertReportData {
+  depositDate?: string;
+  summary?: string;
+  pdfUrl?: string;
+  pdfName?: string;
+  lawyerNotes?: string;
+  resultStatus?: 'في صالح الموكل' | 'ضد الموكل' | 'محايد / إعادة للخبراء' | string;
+}
+
+export interface ExpertActionLog {
+  id: string;
+  actionDate: string;
+  actionTitle: string;
+  actionDetails: string;
+  performedBy: string;
+}
+
+export interface ExpertReferralInfo {
+  isReferred: boolean;
+  referralDate?: string;
+  courtOrCircuit?: string;
+  referralReason?: string;
+  expertOffice?: string;
+  fileNumber?: string;
+  expertName?: string;
+  expertPhone?: string;
+  firstSessionDate?: string;
+  notes?: string;
+  status?: 'قيد مباشرة الخبير' | 'تم إيداع التقرير' | 'تمت إعادة القضية للمحكمة' | string;
+  
+  sessions?: ExpertSession[];
+  documents?: ExpertDocument[];
+  requests?: ExpertRequest[];
+  report?: ExpertReportData;
+  actionLogs?: ExpertActionLog[];
+
+  returnedToCourtAt?: string;
+  returnedToCourtNotes?: string;
+}
+
 export interface Case {
   id: string;
   officeFileNo?: string; // رقم الملف بالمكتب
@@ -190,6 +266,10 @@ export interface Case {
 
   // Files
   files: CaseFile[];
+
+  // Expert Referral (إحالة القضية إلى الخبراء)
+  isReferredToExperts?: boolean;
+  expertReferral?: ExpertReferralInfo;
 
   // Archiving
   isArchived: boolean;

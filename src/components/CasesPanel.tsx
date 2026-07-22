@@ -448,6 +448,17 @@ export default function CasesPanel({
   const [formClients, setFormClients] = useState<CaseClient[]>([]);
   const [formOpponents, setFormOpponents] = useState<Opponent[]>([]);
 
+  // Expert Referral Form Fields
+  const [isReferredToExperts, setIsReferredToExperts] = useState(false);
+  const [expertReferralDate, setExpertReferralDate] = useState('');
+  const [expertCourtOrCircuit, setExpertCourtOrCircuit] = useState('');
+  const [expertReferralReason, setExpertReferralReason] = useState('');
+  const [expertOffice, setExpertOffice] = useState('');
+  const [expertFileNumber, setExpertFileNumber] = useState('');
+  const [expertName, setExpertName] = useState('');
+  const [expertFirstSessionDate, setExpertFirstSessionDate] = useState('');
+  const [expertNotes, setExpertNotes] = useState('');
+
   // Case ID and file upload status
   const [currentCaseId, setCurrentCaseId] = useState<string>('');
   const [isFileUploading, setIsFileUploading] = useState<boolean>(false);
@@ -1455,6 +1466,15 @@ export default function CasesPanel({
     setCurrentCaseId(`case-${Date.now()}`);
     setStagedDeviceFile(null);
     setNewFileName('');
+    setIsReferredToExperts(false);
+    setExpertReferralDate('');
+    setExpertCourtOrCircuit('');
+    setExpertReferralReason('');
+    setExpertOffice('');
+    setExpertFileNumber('');
+    setExpertName('');
+    setExpertFirstSessionDate('');
+    setExpertNotes('');
     setActiveFormTab('judicial');
     setShowFormModal(true);
   };
@@ -1531,6 +1551,15 @@ export default function CasesPanel({
     setCurrentCaseId(c.id);
     setStagedDeviceFile(null);
     setNewFileName('');
+    setIsReferredToExperts(!!(c.isReferredToExperts || c.expertReferral?.isReferred));
+    setExpertReferralDate(c.expertReferral?.referralDate || '');
+    setExpertCourtOrCircuit(c.expertReferral?.courtOrCircuit || c.court || '');
+    setExpertReferralReason(c.expertReferral?.referralReason || '');
+    setExpertOffice(c.expertReferral?.expertOffice || '');
+    setExpertFileNumber(c.expertReferral?.fileNumber || '');
+    setExpertName(c.expertReferral?.expertName || '');
+    setExpertFirstSessionDate(c.expertReferral?.firstSessionDate || '');
+    setExpertNotes(c.expertReferral?.notes || '');
     setActiveFormTab('judicial');
     setShowFormModal(true);
   };
@@ -1616,6 +1645,26 @@ export default function CasesPanel({
       primaryCircuit = circuitCass;
     }
 
+    // Build Expert Referral object if enabled
+    let expertReferralData = editingCase?.expertReferral;
+    if (isReferredToExperts) {
+      expertReferralData = {
+        ...(editingCase?.expertReferral || {}),
+        isReferred: true,
+        referralDate: expertReferralDate || new Date().toISOString().split('T')[0],
+        courtOrCircuit: expertCourtOrCircuit || primaryCourt || '',
+        referralReason: expertReferralReason,
+        expertOffice: expertOffice,
+        fileNumber: expertFileNumber,
+        expertName: expertName,
+        firstSessionDate: expertFirstSessionDate,
+        notes: expertNotes,
+        status: editingCase?.expertReferral?.status || 'قيد مباشرة الخبير'
+      };
+    }
+
+    const updatedCaseStatus = (isReferredToExperts && status === 'متداولة بجلسات المحكمة') ? 'محالة إلى الخبراء' : status;
+
     const caseData: Case = {
       id: currentCaseId || (editingCase ? editingCase.id : `case-${Date.now()}`),
       officeFileNo: officeFileNo || undefined,
@@ -1639,7 +1688,7 @@ export default function CasesPanel({
       circuit: primaryCircuit,
       nextHearingDate: nextHearing || undefined,
       nextHearingTime: nextHearingTime || undefined,
-      status,
+      status: updatedCaseStatus,
       clientName: primaryClientName,
       clientId: selectedClientId,
       opponent: {
@@ -1671,7 +1720,9 @@ export default function CasesPanel({
       ],
       files: uploadedFiles,
       isArchived: editingCase ? editingCase.isArchived : false,
-      assignedLawyerId: assignedLawyer || undefined
+      assignedLawyerId: assignedLawyer || undefined,
+      isReferredToExperts: isReferredToExperts,
+      expertReferral: expertReferralData
     };
 
     if (editingCase) {
@@ -4322,6 +4373,125 @@ export default function CasesPanel({
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-3 focus:ring-amber-500/15 transition-all font-sans"
                     />
                   </FormField>
+                </div>
+              </FormCard>
+
+              {/* Expert Referral Section (إحالة القضية إلى الخبراء) */}
+              <FormCard title="إحالة القضية إلى الخبراء" icon={UserCheck}>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-amber-500/10 border border-amber-500/20 text-amber-600 rounded-xl">
+                        <UserCheck className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-black text-slate-800">القضية محالة إلى الخبراء</p>
+                        <p className="text-[11px] text-slate-500">تفعيل خيار إحالة الدعوى إلى خبراء وزارة العدل لمتابعة الجلسات والمستندات والتقرير</p>
+                      </div>
+                    </div>
+
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isReferredToExperts}
+                        onChange={(e) => {
+                          setIsReferredToExperts(e.target.checked);
+                          if (e.target.checked && status === 'متداولة بجلسات المحكمة') {
+                            setStatus('محالة إلى الخبراء');
+                          }
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                    </label>
+                  </div>
+
+                  {isReferredToExperts && (
+                    <div className="space-y-4 pt-2 border-t border-slate-100 animate-in fade-in duration-200">
+                      <FormGrid cols={3}>
+                        <FormField label="تاريخ قرار الإحالة">
+                          <input
+                            type="date"
+                            value={expertReferralDate}
+                            onChange={(e) => setExpertReferralDate(e.target.value)}
+                            className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white font-mono"
+                          />
+                        </FormField>
+
+                        <FormField label="المحكمة / الدائرة مصدرة القرار">
+                          <input
+                            type="text"
+                            placeholder="مثال: دائرة مدني كلي جنوب القاهرة"
+                            value={expertCourtOrCircuit}
+                            onChange={(e) => setExpertCourtOrCircuit(e.target.value)}
+                            className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white"
+                          />
+                        </FormField>
+
+                        <FormField label="سبب قرار الإحالة">
+                          <input
+                            type="text"
+                            placeholder="مثال: احتساب الريع ونفي الغصب وتصفية الحسابات"
+                            value={expertReferralReason}
+                            onChange={(e) => setExpertReferralReason(e.target.value)}
+                            className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white"
+                          />
+                        </FormField>
+                      </FormGrid>
+
+                      <FormGrid cols={4}>
+                        <FormField label="مكتب الخبراء المختص">
+                          <input
+                            type="text"
+                            placeholder="مثال: مكتب خبراء وزارة العدل بالزيتون"
+                            value={expertOffice}
+                            onChange={(e) => setExpertOffice(e.target.value)}
+                            className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white"
+                          />
+                        </FormField>
+
+                        <FormField label="رقم ملف الخبراء" isMono>
+                          <input
+                            type="text"
+                            placeholder="مثال: 1420 / 2026"
+                            value={expertFileNumber}
+                            onChange={(e) => setExpertFileNumber(e.target.value)}
+                            className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white font-mono text-left"
+                            dir="ltr"
+                          />
+                        </FormField>
+
+                        <FormField label="اسم الخبير المنتدب (اختياري)">
+                          <input
+                            type="text"
+                            placeholder="اسم الخبير (إن وجد)"
+                            value={expertName}
+                            onChange={(e) => setExpertName(e.target.value)}
+                            className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white"
+                          />
+                        </FormField>
+
+                        <FormField label="تاريخ أول جلسة خبرة (إن وجد)">
+                          <input
+                            type="date"
+                            value={expertFirstSessionDate}
+                            onChange={(e) => setExpertFirstSessionDate(e.target.value)}
+                            className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white font-mono"
+                          />
+                        </FormField>
+                      </FormGrid>
+
+                      <FormField label="ملاحظات وتوجيهات الإحالة">
+                        <textarea
+                          rows={2}
+                          placeholder="أي ملاحظات هامة تخص مرحلة الخبراء..."
+                          value={expertNotes}
+                          onChange={(e) => setExpertNotes(e.target.value)}
+                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white"
+                        />
+                      </FormField>
+                    </div>
+                  )}
                 </div>
               </FormCard>
 

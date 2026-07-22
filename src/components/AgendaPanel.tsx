@@ -107,6 +107,29 @@ export default function AgendaPanel({
         });
       }
     });
+
+    // Extract sessions from expert referral history
+    if ((c.isReferredToExperts || c.expertReferral?.isReferred) && c.expertReferral?.sessions) {
+      c.expertReferral.sessions.forEach(expSess => {
+        if (!expSess.date) return;
+        const exists = sessions.some(s => s.caseId === c.id && s.date === expSess.date);
+        if (!exists) {
+          discoveredSessions.push({
+            caseObj: c,
+            file: { 
+              id: expSess.id, 
+              name: `جلسة خبراء: ${expSess.sessionType} (${expSess.location || 'مكتب الخبراء'})`, 
+              type: 'expert', 
+              category: 'expert', 
+              uploadDate: expSess.date, 
+              fileUrl: '#' 
+            },
+            fileDate: expSess.date,
+            suggestedSubject: `جلسة خبرة (${expSess.sessionType}) - ${expSess.location || c.expertReferral?.expertOffice || 'مكتب الخبراء'}`
+          });
+        }
+      });
+    }
   });
 
   const handleAddSingleDiscoveredSession = (item: typeof discoveredSessions[0]) => {

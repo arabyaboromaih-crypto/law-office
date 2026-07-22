@@ -13,6 +13,7 @@ import { getFileFromIndexedDB, getProxiedUrl } from '../utils/fileStorage';
 import MultiUploadManager from './MultiUploadManager';
 import { CourtSelect } from '../utils/courts';
 import { BaseModal, FormCard, FormGrid, FormField, PrimaryButton, SecondaryButton } from './FormComponents';
+import ExpertReferralPanel from './ExpertReferralPanel';
 
 interface SmartCaseFileProps {
   caseData: Case;
@@ -37,9 +38,12 @@ export default function SmartCaseFile({
   onClose,
   clients = []
 }: SmartCaseFileProps) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'sessions' | 'documents' | 'financials' | 'ai' | 'timeline'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'sessions' | 'experts' | 'documents' | 'financials' | 'ai' | 'timeline'>('overview');
   const [localCase, setLocalCase] = useState<Case>(caseData);
   const [showReportPreview, setShowReportPreview] = useState(false);
+
+  // Check if case is referred to experts
+  const isExpertCase = !!(localCase.isReferredToExperts || localCase.expertReferral?.isReferred);
 
   // Synchronize local state with real-time updates from prop
   useEffect(() => {
@@ -132,6 +136,7 @@ export default function SmartCaseFile({
           {[
             { id: 'overview', label: 'ملف القضية', icon: FileText },
             { id: 'sessions', label: 'الجلسات والقرارات', icon: Gavel },
+            ...(isExpertCase ? [{ id: 'experts', label: 'الخبراء', icon: UserCheck }] : []),
             { id: 'documents', label: 'الأوراق والمرفقات', icon: FilePlus },
             { id: 'financials', label: 'الماليات والأرصدة', icon: Coins },
             { id: 'ai', label: 'المساعد القانوني AI', icon: Sparkles },
@@ -184,6 +189,18 @@ export default function SmartCaseFile({
                   onAddSession={onAddSession}
                   onUpdateSession={onUpdateSession}
                   onUpdateCase={onUpdateCase}
+                  logAction={logAction}
+                />
+              )}
+              {activeTab === 'experts' && (
+                <ExpertReferralPanel
+                  localCase={localCase}
+                  currentUser={currentUser}
+                  users={users}
+                  onUpdateCase={async (val) => {
+                    setLocalCase(val);
+                    await onUpdateCase(val);
+                  }}
                   logAction={logAction}
                 />
               )}
