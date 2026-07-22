@@ -1,0 +1,58 @@
+{
+  "name": "مؤسسة رميح للمحاماة والاستشارات القانونية",
+  "short_name": "رميح للمحاماة",
+  "description": "نظام متكامل لإدارة القضايا والموكلين والشركات وأجندة الجلسات والماليات والأرشيف وسجل العمليات متوافق بالكامل مع سير العمل في المحاكم المصرية.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#1e293b",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-192-maskable.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "القضايا",
+      "short_name": "القضايا",
+      "description": "استعراض وإدارة القضايا الجارية والمنتهية",
+      "url": "/#cases",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "المهام",
+      "short_name": "المهام",
+      "description": "متابعة وإسناد المهام والمسؤوليات القانونية",
+      "url": "/#tasks",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "الشركات",
+      "short_name": "الشركات",
+      "description": "إدارة الموكلين من الشركات والمؤسسات",
+      "url": "/#clients",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

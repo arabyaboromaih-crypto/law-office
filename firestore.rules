@@ -1,0 +1,70 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny for safety
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Allow read/write access to specific collections used by the law office management app
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+    match /clients/{clientId} {
+      allow read, write: if true;
+    }
+    match /companies/{companyId} {
+      allow read, write: if true;
+    }
+    match /opponents/{opponentId} {
+      allow read, write: if true;
+    }
+    match /cases/{caseId} {
+      allow read, write: if true;
+    }
+    match /sessions/{sessionId} {
+      allow read, write: if true;
+    }
+    match /tasks/{taskId} {
+      allow read, write: if true;
+    }
+    match /auditLogs/{logId} {
+      allow read, write: if true;
+    }
+    match /notifications/{notificationId} {
+      allow read, write: if true;
+    }
+    match /settings/{settingId} {
+      allow read, write: if true;
+    }
+
+    // Real Estate Management
+    match /re_owners/{ownerId} {
+      allow read, write: if true;
+    }
+    match /re_properties/{propertyId} {
+      allow read, write: if true;
+    }
+    match /re_units/{unitId} {
+      allow read, write: if true;
+    }
+    match /re_tenants/{tenantId} {
+      allow read, write: if true;
+    }
+    match /re_collections/{collectionId} {
+      allow read, write: if true;
+    }
+    match /re_payouts/{payoutId} {
+      allow read, write: if true;
+    }
+    match /re_expenses/{expenseId} {
+      allow read, write: if true;
+    }
+    match /re_logs/{logId} {
+      allow read, write: if true;
+    }
+    match /re_dues/{dueId} {
+      allow read, write: if true;
+    }
+  }
+}
