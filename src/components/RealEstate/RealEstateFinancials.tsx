@@ -1,4 +1,9 @@
 import React, { useState, useMemo } from 'react';
+import RealEstateReportModal, { 
+  generateRealEstateReportHTML, 
+  printReportDirectly, 
+  ReportType 
+} from './RealEstateReportModal';
 import { 
   Wallet, Receipt, Building, Users, Calendar, AlertCircle, 
   CheckCircle, Clock, DollarSign, Printer, Search, Filter, 
@@ -286,9 +291,32 @@ export default function RealEstateFinancials({
     });
   }, [dues, selectedMonthYear, searchQuery, selectedOwnerId, selectedPropertyId, statusFilter, todayISO, currentMonthISO]);
 
-  // Handle printing
-  const handlePrintReport = () => {
-    window.print();
+  // Modal State for Official Report Preview & Printing
+  const [isReportModalOpen, setIsReportModalOpen] = useState<boolean>(false);
+  const [modalReportType, setModalReportType] = useState<ReportType>('property_monthly');
+
+  const handleOpenReportPreview = (type?: ReportType) => {
+    if (type) setModalReportType(type);
+    else setModalReportType(reportType);
+    setIsReportModalOpen(true);
+  };
+
+  const handlePrintReportDirectly = (type?: ReportType) => {
+    const activeType = type || reportType;
+    const html = generateRealEstateReportHTML({
+      reportType: activeType,
+      dues,
+      owners,
+      properties,
+      units,
+      tenants,
+      selectedPropertyId,
+      selectedOwnerId,
+      selectedTenantId,
+      selectedMonthYear,
+      currentUser
+    });
+    printReportDirectly(html);
   };
 
   return (
@@ -414,13 +442,22 @@ export default function RealEstateFinancials({
           ))}
         </div>
 
-        <button
-          onClick={handlePrintReport}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#08111F]/60 border border-[#D4A84F]/20 text-[#D4A84F] hover:bg-[#D4A84F]/10 text-xs font-bold transition-all cursor-pointer"
-        >
-          <Printer className="w-3.5 h-3.5 stroke-[2]" />
-          <span>طباعة الشاشة / PDF</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => handleOpenReportPreview(reportType)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#08111F]/70 border border-[#D4A84F]/30 text-[#D4A84F] hover:bg-[#D4A84F]/10 text-xs font-bold transition-all cursor-pointer"
+          >
+            <Eye className="w-3.5 h-3.5 stroke-[2.2]" />
+            <span>معاينة التقرير</span>
+          </button>
+          <button
+            onClick={() => handlePrintReportDirectly(reportType)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#D4A84F] to-[#B38734] text-slate-950 text-xs font-black hover:brightness-110 shadow-sm transition-all cursor-pointer"
+          >
+            <Printer className="w-3.5 h-3.5 stroke-[2.5]" />
+            <span>طباعة التقرير الرسمي PDF</span>
+          </button>
+        </div>
       </div>
 
       {/* VIEW 1: اللوحة المالية الشاملة (FINANCIAL OVERVIEW) */}
@@ -1315,12 +1352,18 @@ export default function RealEstateFinancials({
               />
             </div>
 
-            <div className="flex items-end">
+            <div className="flex items-end gap-2">
               <button
-                onClick={handlePrintReport}
-                className="w-full py-2 rounded-xl bg-[#D4A84F]/20 border border-[#D4A84F]/40 text-[#D4A84F] font-bold text-xs hover:bg-[#D4A84F]/30 transition-all cursor-pointer flex items-center justify-center gap-2"
+                onClick={() => handleOpenReportPreview('property_monthly')}
+                className="flex-1 py-2 rounded-xl bg-[#08111F]/80 border border-[#D4A84F]/30 text-[#D4A84F] font-bold text-xs hover:bg-[#D4A84F]/10 transition-all cursor-pointer flex items-center justify-center gap-1.5"
               >
-                <Printer className="w-4 h-4" /> طباعة كشف حساب العقار
+                <Eye className="w-4 h-4" /> معاينة
+              </button>
+              <button
+                onClick={() => handlePrintReportDirectly('property_monthly')}
+                className="flex-1 py-2 rounded-xl bg-gradient-to-r from-[#D4A84F] to-[#B38734] text-slate-950 font-black text-xs hover:brightness-110 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-[#D4A84F]/20"
+              >
+                <Printer className="w-4 h-4 stroke-[2.5]" /> طباعة كشف العقار PDF
               </button>
             </div>
           </div>
@@ -1434,15 +1477,18 @@ export default function RealEstateFinancials({
               </select>
             </div>
 
-            <div className="flex items-end">
+            <div className="flex items-end gap-2">
               <button
-                onClick={() => {
-                  setReportType('owner_statement');
-                  setCurrentTab('reports');
-                }}
-                className="w-full py-2 rounded-xl bg-gradient-to-r from-[#D4A84F] to-[#B38734] text-slate-950 font-black text-xs hover:brightness-110 transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-[#D4A84F]/20"
+                onClick={() => handleOpenReportPreview('owner_statement')}
+                className="flex-1 py-2 rounded-xl bg-[#08111F]/80 border border-[#D4A84F]/30 text-[#D4A84F] font-bold text-xs hover:bg-[#D4A84F]/10 transition-all cursor-pointer flex items-center justify-center gap-1.5"
               >
-                <Printer className="w-4 h-4 stroke-[2.5]" /> طباعة كشف الحساب الرسمي / PDF
+                <Eye className="w-4 h-4" /> معاينة
+              </button>
+              <button
+                onClick={() => handlePrintReportDirectly('owner_statement')}
+                className="flex-1 py-2 rounded-xl bg-gradient-to-r from-[#D4A84F] to-[#B38734] text-slate-950 font-black text-xs hover:brightness-110 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-[#D4A84F]/20"
+              >
+                <Printer className="w-4 h-4 stroke-[2.5]" /> طباعة كشف الحساب الرسمي PDF
               </button>
             </div>
           </div>
@@ -1675,12 +1721,18 @@ export default function RealEstateFinancials({
               </select>
             </div>
 
-            <div className="flex items-end">
+            <div className="flex items-end gap-2">
               <button
-                onClick={handlePrintReport}
-                className="w-full py-2 rounded-xl bg-[#D4A84F]/20 border border-[#D4A84F]/40 text-[#D4A84F] font-bold text-xs hover:bg-[#D4A84F]/30 transition-all cursor-pointer flex items-center justify-center gap-2"
+                onClick={() => handleOpenReportPreview('tenant_statement')}
+                className="flex-1 py-2 rounded-xl bg-[#08111F]/80 border border-[#D4A84F]/30 text-[#D4A84F] font-bold text-xs hover:bg-[#D4A84F]/10 transition-all cursor-pointer flex items-center justify-center gap-1.5"
               >
-                <Printer className="w-4 h-4" /> طباعة كشف حساب المستأجر
+                <Eye className="w-4 h-4" /> معاينة
+              </button>
+              <button
+                onClick={() => handlePrintReportDirectly('tenant_statement')}
+                className="flex-1 py-2 rounded-xl bg-gradient-to-r from-[#D4A84F] to-[#B38734] text-slate-950 font-black text-xs hover:brightness-110 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-[#D4A84F]/20"
+              >
+                <Printer className="w-4 h-4 stroke-[2.5]" /> طباعة كشف المستأجر PDF
               </button>
             </div>
           </div>
@@ -2045,12 +2097,18 @@ export default function RealEstateFinancials({
               />
             </div>
 
-            <div className="flex items-end">
+            <div className="flex items-end gap-2">
               <button
-                onClick={handlePrintReport}
-                className="w-full py-2 rounded-xl bg-gradient-to-r from-[#D4A84F] to-[#B38734] text-slate-950 font-black text-xs hover:brightness-110 shadow-lg shadow-[#D4A84F]/20 transition-all cursor-pointer flex items-center justify-center gap-2"
+                onClick={() => handleOpenReportPreview(reportType)}
+                className="flex-1 py-2 px-3 rounded-xl bg-[#08111F]/80 border border-[#D4A84F]/30 text-[#D4A84F] font-bold text-xs hover:bg-[#D4A84F]/10 transition-all cursor-pointer flex items-center justify-center gap-1.5"
               >
-                <Printer className="w-4 h-4 stroke-[2.5]" /> طباعة التقرير الرسمي / PDF
+                <Eye className="w-4 h-4" /> معاينة التقرير
+              </button>
+              <button
+                onClick={() => handlePrintReportDirectly(reportType)}
+                className="flex-1 py-2 px-3 rounded-xl bg-gradient-to-r from-[#D4A84F] to-[#B38734] text-slate-950 font-black text-xs hover:brightness-110 shadow-lg shadow-[#D4A84F]/20 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Printer className="w-4 h-4 stroke-[2.5]" /> طباعة التقرير الرسمي PDF
               </button>
             </div>
           </div>
@@ -2173,6 +2231,23 @@ export default function RealEstateFinancials({
 
         </div>
       )}
+
+      {/* Real Estate Report Preview & Printable Modal */}
+      <RealEstateReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        reportType={modalReportType}
+        dues={dues}
+        owners={owners}
+        properties={properties}
+        units={units}
+        tenants={tenants}
+        selectedPropertyId={selectedPropertyId}
+        selectedOwnerId={selectedOwnerId}
+        selectedTenantId={selectedTenantId}
+        selectedMonthYear={selectedMonthYear}
+        currentUser={currentUser}
+      />
 
     </div>
   );
