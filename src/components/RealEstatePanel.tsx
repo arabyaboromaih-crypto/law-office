@@ -2992,7 +2992,7 @@ export default function RealEstatePanel({ currentUser }: RealEstatePanelProps) {
                         <label className="text-xs text-[#9EA7B8] font-bold block">طريقة السداد *</label>
                         <select 
                           value={collectForm.paymentMethod} 
-                          onChange={(e) => setCollectForm({ ...collectForm, paymentMethod: e.target.value })} 
+                          onChange={(e) => setCollectForm({ ...collectForm, paymentMethod: e.target.value as any })} 
                           className="w-full bg-[#08111F]/60 border border-[#D4A84F]/15 rounded-xl px-3 py-2 text-xs text-[#F8F9FB] font-bold focus:outline-none focus:border-[#D4A84F]"
                         >
                           <option value="cash">نقداً بالخزينة</option>

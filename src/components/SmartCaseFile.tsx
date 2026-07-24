@@ -1306,17 +1306,6 @@ function OverviewTab({
               </div>
 
               <FormCard title="الموكلين وأصحاب الشأن (الطرف الأول)" icon={UserCheck}>
-                <div className="absolute top-4 left-4">
-                  <PrimaryButton
-                    type="button"
-                    onClick={addFormClient}
-                    className="px-3 py-1.5 text-xs flex items-center gap-1.5"
-                  >
-                    <PlusCircle className="w-4 h-4" />
-                    إضافة موكل جديد
-                  </PrimaryButton>
-                </div>
-
                 <div className="space-y-4 pt-2">
                   {formClients.map((cl, idx) => (
                     <div key={idx} className="bg-slate-50 hover:bg-slate-100/50 border border-slate-150 rounded-xl p-4 transition-all duration-200 relative">
@@ -1416,17 +1405,6 @@ function OverviewTab({
               </FormCard>
 
               <FormCard title="الخصوم وأطراف النزاع (الطرف الثاني)" icon={ShieldAlert}>
-                <div className="absolute top-4 left-4">
-                  <PrimaryButton
-                    type="button"
-                    onClick={addFormOpponent}
-                    className="px-3 py-1.5 text-xs flex items-center gap-1.5"
-                  >
-                    <PlusCircle className="w-4 h-4 text-amber-400" />
-                    إضافة خصم جديد
-                  </PrimaryButton>
-                </div>
-
                 <div className="space-y-4 pt-2">
                   {formOpponents.map((opp, idx) => (
                     <div key={idx} className="bg-slate-50 hover:bg-slate-100/50 border border-slate-150 rounded-xl p-4 transition-all duration-200 relative">
@@ -2998,102 +2976,197 @@ function TimelineTab({ localCase, caseSessions }: { localCase: Case, caseSession
 // ======================== PRINT COMPONENT: FULL REPORT LAYOUT ========================
 function PrintableReport({ caseData, sessions, isPreview = false }: { caseData: Case; sessions: HearingSession[]; isPreview?: boolean }) {
   const expensesList: any[] = (caseData as any).expenses || [];
-  const totalExpenses = expensesList.reduce((sum, exp) => sum + exp.amount, 0);
+  const totalExpenses = expensesList.reduce((sum, exp) => sum + (exp.amount || 0), 0);
+
+  const paymentsList: any[] = caseData.payments || [];
+  const totalPaid = caseData.paidFees || paymentsList.reduce((sum, p) => sum + (p.amount || 0), 0);
+  const remainingFees = Math.max(0, (caseData.totalFees || 0) - totalPaid);
+
+  const filesList: any[] = caseData.files || [];
+  const caseSessions = [...(sessions || [])].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  const previousDecisions = caseSessions.filter(s => s.decision && s.decision.trim() !== '');
+
+  const formattedDate = new Date().toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
+  const reportCode = `RUM-CASE-${caseData.caseNumberFirstInstance || caseData.officeFileNo || '2026'}-${Math.floor(1000 + Math.random() * 9000)}`;
 
   return (
-    <div className={`${isPreview ? 'block' : 'hidden print:block'} bg-white text-black p-8 font-sans`} dir="rtl">
+    <div className={`${isPreview ? 'block' : 'hidden print:block'} bg-white text-slate-900 p-6 md:p-8 font-sans leading-relaxed text-right`} dir="rtl" style={{ fontFamily: "'Cairo', sans-serif" }}>
       
-      {/* Decorative Title/Letterhead */}
-      <div className="text-center border-b-4 border-slate-900 pb-5 mb-8 space-y-2">
-        <h1 className="text-2xl font-black tracking-tight text-slate-900">مؤسسة رميح للمحاماة والاستشارات القانونية</h1>
-        <p className="text-xs font-bold text-slate-500">مكتب الأستاذ عربي رميح • تقرير حالة ملف دعوى قضائية رسمي ومعتمد</p>
-        <p className="text-[10px] text-slate-400">تاريخ إصدار التقرير: {new Date().toLocaleDateString('ar-EG')}</p>
+      {/* Dynamic Print CSS for perfect A4 styling */}
+      <style>{`
+        @media print {
+          @page {
+            size: A4;
+            margin: 10mm 12mm 12mm 12mm;
+          }
+          body {
+            background-color: #ffffff !important;
+            color: #0f172a !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+        }
+      `}</style>
+
+      {/* LUXURY OFFICIAL HEADER */}
+      <div className="border-b-2 border-[#b45309] pb-4 mb-6">
+        <div className="flex justify-between items-center gap-4">
+          <div className="space-y-1">
+            <h1 className="text-xl font-black text-slate-900 tracking-tight">مؤسسة رميح للمحاماة والاستشارات القانونية</h1>
+            <p className="text-xs font-bold text-[#b45309]">أعمال التقاضي والطعن والتمثيل القضائي أمام كافة المحاكم</p>
+            <p className="text-[10px] text-slate-500">تأسست عام ١٩٨٥ | المركز الرئيسي | هاتف: ٠١٠٠٢٢٢٠٠٠</p>
+          </div>
+          <div className="text-center">
+            <div className="w-14 h-14 mx-auto rounded-xl bg-gradient-to-br from-[#b45309] to-[#78350f] text-white flex items-center justify-center text-2xl shadow-sm border border-amber-400/30">
+              ⚖️
+            </div>
+          </div>
+          <div className="text-left text-[10px] text-slate-600 space-y-0.5" dir="ltr">
+            <p className="font-bold text-slate-800">RUMEIH LAW FIRM</p>
+            <p>Date: {new Date().toISOString().split('T')[0]}</p>
+            <p className="font-mono text-[9px] text-amber-700">Code: {reportCode}</p>
+            <p>File No: {caseData.officeFileNo || 'R-' + caseData.caseNumberFirstInstance}</p>
+          </div>
+        </div>
       </div>
 
-      <div className="space-y-6">
+      {/* DOCUMENT TITLE BADGE */}
+      <div className="text-center mb-6">
+        <span className="inline-block bg-amber-50 text-[#78350f] border border-amber-300 font-black text-xs px-6 py-1.5 rounded-full shadow-sm">
+          📋 التقرير القانوني القضائي والمالي الشامل لملف الدعوى
+        </span>
+      </div>
+
+      <div className="space-y-5 text-xs">
         
-        {/* Section 1: Case Meta Data */}
-        <div className="border border-slate-300 rounded-lg p-4 space-y-3">
-          <h3 className="text-sm font-black bg-slate-100 p-2 rounded">📂 بيانات القضية الأساسية</h3>
-          <table className="w-full text-xs text-right border-collapse">
+        {/* SECTION 1: LITIGATION & COURT METADATA */}
+        <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+          <div className="bg-amber-100/70 border-b border-amber-200 px-3.5 py-2 font-black text-[#78350f] flex items-center gap-2">
+            <span>📂 أولاً: بيانات الدعوى ومعرفات درجات التقاضي</span>
+          </div>
+          <table className="w-full text-right border-collapse">
             <tbody>
-              <tr>
-                <td className="p-1.5 font-black border-b border-slate-200">اسم الموكل:</td>
-                <td className="p-1.5 border-b border-slate-200">{caseData.clientName}</td>
-                <td className="p-1.5 font-black border-b border-slate-200">الخصم وأطرافه:</td>
-                <td className="p-1.5 border-b border-slate-200">{caseData.opponent?.name}</td>
+              <tr className="border-b border-slate-100">
+                <td className="p-2 bg-slate-50 font-bold text-slate-700 w-1/6">رقم أول درجة:</td>
+                <td className="p-2 font-black text-amber-800 w-2/6">{caseData.caseNumberFirstInstance} لسنة {caseData.caseYearFirstInstance}</td>
+                <td className="p-2 bg-slate-50 font-bold text-slate-700 w-1/6">محكمة ودائرة أول درجة:</td>
+                <td className="p-2 w-2/6">{caseData.courtFirstInstance || caseData.court || 'غير محدد'} - د/ {caseData.circuitFirstInstance || caseData.circuit || 'غير محدد'} {caseData.venueFirstInstance ? `(${caseData.venueFirstInstance})` : ''}</td>
+              </tr>
+              <tr className="border-b border-slate-100">
+                <td className="p-2 bg-slate-50 font-bold text-slate-700">رقم الاستئناف:</td>
+                <td className="p-2 font-semibold">{caseData.caseNumberSecondInstance ? `${caseData.caseNumberSecondInstance} لسنة ${caseData.caseYearSecondInstance || ''}` : 'غير مقيد أو قيد التحضير'}</td>
+                <td className="p-2 bg-slate-50 font-bold text-slate-700">محكمة ودائرة الاستئناف:</td>
+                <td className="p-2">{caseData.courtSecondInstance || 'غير مقيد'} {caseData.circuitSecondInstance ? `- د/ ${caseData.circuitSecondInstance}` : ''} {caseData.venueSecondInstance ? `(${caseData.venueSecondInstance})` : ''}</td>
+              </tr>
+              <tr className="border-b border-slate-100">
+                <td className="p-2 bg-slate-50 font-bold text-slate-700">رقم طعن النقض:</td>
+                <td className="p-2 font-semibold">{caseData.cassationNumber ? `${caseData.cassationNumber} لسنة ${caseData.cassationYear || ''}` : 'غير مقيد'}</td>
+                <td className="p-2 bg-slate-50 font-bold text-slate-700">محكمة ودائرة النقض:</td>
+                <td className="p-2">{caseData.courtCassation || 'غير مقيد'} {caseData.circuitCassation ? `- د/ ${caseData.circuitCassation}` : ''}</td>
+              </tr>
+              <tr className="border-b border-slate-100">
+                <td className="p-2 bg-slate-50 font-bold text-slate-700">المحكمة والدائرة الحالية:</td>
+                <td className="p-2 font-black text-slate-900">{caseData.court} - {caseData.circuit}</td>
+                <td className="p-2 bg-slate-50 font-bold text-slate-700">درجة التقاضي ونوعها:</td>
+                <td className="p-2 font-bold text-blue-800">{caseData.degree} - ({caseData.type})</td>
               </tr>
               <tr>
-                <td className="p-1.5 font-black border-b border-slate-200">جهة المحكمة:</td>
-                <td className="p-1.5 border-b border-slate-200">{caseData.court}</td>
-                <td className="p-1.5 font-black border-b border-slate-200 font-sans">رقم الدعوى:</td>
-                <td className="p-1.5 border-b border-slate-200">{caseData.caseNumberFirstInstance} لسنة {caseData.caseYearFirstInstance}</td>
-              </tr>
-              <tr>
-                <td className="p-1.5 font-black border-b border-slate-200">درجة التقاضي:</td>
-                <td className="p-1.5 border-b border-slate-200">{caseData.degree}</td>
-                <td className="p-1.5 font-black border-b border-slate-200">نوع الدعوى:</td>
-                <td className="p-1.5 border-b border-slate-200">{caseData.type}</td>
-              </tr>
-              <tr>
-                <td className="p-1.5 font-black border-b border-slate-200">مقر الدائرة:</td>
-                <td className="p-1.5 border-b border-slate-200">{caseData.circuit || 'الدائرة المدنية الكلية'}</td>
-                <td className="p-1.5 font-black border-b border-slate-200">هيئة المحكمة:</td>
-                <td className="p-1.5 border-b border-slate-200">{(caseData as any).courtBench || 'غير محدد'}</td>
+                <td className="p-2 bg-slate-50 font-bold text-slate-700">حالة القضية ورقم الحصر:</td>
+                <td className="p-2 font-bold text-emerald-700">{caseData.status} {caseData.enforcementNumber ? `| حصر رقم: ${caseData.enforcementNumber}` : ''}</td>
+                <td className="p-2 bg-slate-50 font-bold text-slate-700">عضو النيابة والمحامي المكلف:</td>
+                <td className="p-2 font-semibold">{caseData.prosecutorName ? `النيابة: ${caseData.prosecutorName} | ` : ''}المكلف: (أستاذ عربي رميح)</td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        {/* Section 2: Financial summary */}
-        <div className="border border-slate-300 rounded-lg p-4 space-y-3">
-          <h3 className="text-sm font-black bg-slate-100 p-2 rounded">💰 التصفية والتقرير المالي للملف</h3>
-          <table className="w-full text-xs text-right border-collapse">
+        {/* SECTION 2: LITIGATION PARTIES */}
+        <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+          <div className="bg-amber-100/70 border-b border-amber-200 px-3.5 py-2 font-black text-[#78350f] flex items-center gap-2">
+            <span>👥 ثانياً: أطراف الخصومة والنزاع القضائي</span>
+          </div>
+          <table className="w-full text-right border-collapse">
             <tbody>
-              <tr>
-                <td className="p-1.5 font-black border-b">إجمالي الأتعاب المقررة بالاتفاق:</td>
-                <td className="p-1.5 border-b">{caseData.totalFees} ج.م.</td>
-                <td className="p-1.5 font-black border-b">إجمالي المدفوع حتى تاريخه:</td>
-                <td className="p-1.5 border-b">{caseData.paidFees} ج.م.</td>
-              </tr>
-              <tr>
-                <td className="p-1.5 font-black border-b">رسوم ومصروفات المحاكم الفعلية:</td>
-                <td className="p-1.5 border-b">{totalExpenses} ج.م.</td>
-                <td className="p-1.5 font-black border-b">صافي الرصيد المتبقي مستحق الدفع:</td>
-                <td className="p-1.5 border-b font-extrabold text-slate-900">{caseData.totalFees - caseData.paidFees} ج.م.</td>
-              </tr>
+              {caseData.clientsList && caseData.clientsList.length > 0 ? (
+                caseData.clientsList.map((cl, idx) => (
+                  <tr key={idx} className="border-b border-slate-100 bg-emerald-50/40">
+                    <td className="p-2 font-bold text-emerald-900 w-1/4">الموكل رقم {idx + 1}:</td>
+                    <td className="p-2 font-black text-emerald-950 w-2/4">{cl.name} {cl.role ? `(${cl.role})` : ''}</td>
+                    <td className="p-2 text-slate-600 w-1/4">هاتف: {cl.phone || 'غير مدون'}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr className="border-b border-slate-100 bg-emerald-50/40">
+                  <td className="p-2 font-bold text-emerald-900 w-1/6">اسم الموكل:</td>
+                  <td className="p-2 font-black text-emerald-950 w-2/6">{caseData.clientName}</td>
+                  <td className="p-2 font-bold text-emerald-900 w-1/6">بيانات التواصل:</td>
+                  <td className="p-2 text-slate-700 w-2/6">طبيعة الصفة القضائية بالدعوى</td>
+                </tr>
+              )}
+
+              {caseData.opponentsList && caseData.opponentsList.length > 0 ? (
+                caseData.opponentsList.map((opp, idx) => (
+                  <tr key={idx} className="border-b border-slate-100 bg-rose-50/40">
+                    <td className="p-2 font-bold text-rose-900 w-1/4">الخصم رقم {idx + 1}:</td>
+                    <td className="p-2 font-black text-rose-950 w-2/4">{opp.name} ({opp.role})</td>
+                    <td className="p-2 text-slate-600 w-1/4">عنوان: {opp.address || 'غير مدون'} | محامي: {opp.lawyer || 'لا يوجد'}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr className="bg-rose-50/40">
+                  <td className="p-2 font-bold text-rose-900 w-1/6">اسم الخصم:</td>
+                  <td className="p-2 font-black text-rose-950 w-2/6">{caseData.opponent?.name} ({caseData.opponent?.role || 'خصم'})</td>
+                  <td className="p-2 font-bold text-rose-900 w-1/6">بيانات الخصم وكيله:</td>
+                  <td className="p-2 text-slate-700 w-2/6">العنوان: {caseData.opponent?.address || 'غير مدون'} | المحامي: {caseData.opponent?.lawyer || 'لا يوجد'}</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
 
-        {/* Section 3: Subject & Notes */}
-        {caseData.subject && (
-          <div className="border border-slate-300 rounded-lg p-4 space-y-2">
-            <h3 className="text-sm font-black bg-slate-100 p-2 rounded">📝 موضوع الدعوى والطلبات القانونية</h3>
-            <p className="text-xs text-slate-800 leading-relaxed">{caseData.subject}</p>
+        {/* SECTION 3: SUBJECT & LEGAL CLAIMS */}
+        {(caseData.subject || caseData.notes) && (
+          <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+            <div className="bg-amber-100/70 border-b border-amber-200 px-3.5 py-2 font-black text-[#78350f]">
+              📝 ثالثاً: موضوع الدعوى والطلبات المودعة
+            </div>
+            <div className="p-3 bg-slate-50/50 text-slate-800 leading-relaxed font-medium">
+              {caseData.subject && <p className="mb-1.5"><strong className="text-slate-900">الموضوع والطلبات:</strong> {caseData.subject}</p>}
+              {caseData.notes && <p className="text-slate-600"><strong className="text-slate-900">ملاحظات الملف والوقائع:</strong> {caseData.notes}</p>}
+            </div>
           </div>
         )}
 
-        {/* Section 4: Sessions schedule */}
-        <div className="border border-slate-300 rounded-lg p-4 space-y-3">
-          <h3 className="text-sm font-black bg-slate-100 p-2 rounded">📅 مواعيد الجلسات والقرارات المثبتة</h3>
-          {sessions.length === 0 ? (
-            <p className="text-xs text-slate-400 p-2">لا توجد جلسات قضائية مجدولة.</p>
+        {/* SECTION 4: COMPLETE SESSIONS & DECISIONS HISTORY */}
+        <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+          <div className="bg-amber-100/70 border-b border-amber-200 px-3.5 py-2 font-black text-[#78350f] flex justify-between items-center">
+            <span>📅 رابعاً: السجل الزمني للجلسات وما تم فيها والقرارات القضائية</span>
+            <span className="text-[10px] bg-amber-200/80 px-2 py-0.5 rounded text-amber-900 font-bold">إجمالي الجلسات: {caseSessions.length}</span>
+          </div>
+          {caseSessions.length === 0 ? (
+            <p className="p-4 text-slate-500 italic text-center bg-slate-50">لا توجد جلسات أو إجراءات سابقة مؤرشفة بالملف القضائي.</p>
           ) : (
-            <table className="w-full text-xs text-right border-collapse">
+            <table className="w-full text-right border-collapse">
               <thead>
-                <tr className="bg-slate-50">
-                  <th className="p-2 border border-slate-300">التاريخ</th>
-                  <th className="p-2 border border-slate-300">مطلوب الجلسة</th>
-                  <th className="p-2 border border-slate-300">قرار هيئة المحكمة</th>
+                <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                  <th className="p-2 w-1/12 text-center">#</th>
+                  <th className="p-2 w-2/12">تاريخ الجلسة</th>
+                  <th className="p-2 w-3/12">موضوع ومطلوب الجلسة</th>
+                  <th className="p-2 w-3/12">ما تم بالجلسة والإجراء</th>
+                  <th className="p-2 w-3/12">القرار القضائي المعتمد</th>
                 </tr>
               </thead>
               <tbody>
-                {sessions.map(sess => (
-                  <tr key={sess.id}>
-                    <td className="p-2 border border-slate-300 font-bold">{sess.date} ({sess.time})</td>
-                    <td className="p-2 border border-slate-300">{sess.subject}</td>
-                    <td className="p-2 border border-slate-300 font-semibold text-slate-800">{sess.decision || 'بانتظار القرار'}</td>
+                {caseSessions.map((sess, idx) => (
+                  <tr key={sess.id || idx} className={`border-b border-slate-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'}`}>
+                    <td className="p-2 text-center font-bold text-slate-500">{idx + 1}</td>
+                    <td className="p-2 font-bold text-amber-800 font-mono text-[11px]">{sess.date} {sess.time ? `(${sess.time})` : ''}</td>
+                    <td className="p-2 text-slate-800 font-semibold">{sess.subject || 'جلسة نظر دعوى'}</td>
+                    <td className="p-2 text-slate-600">{sess.whatHappened || 'تم الحضور والمتابعة'}</td>
+                    <td className="p-2 font-bold text-amber-900 bg-amber-50/50">{sess.decision || 'بانتظار رصد القرار'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -3101,18 +3174,236 @@ function PrintableReport({ caseData, sessions, isPreview = false }: { caseData: 
           )}
         </div>
 
+        {/* SECTION 5: EXPERT REFERRAL DETAILS (IF REFERRED) */}
+        {(caseData.isReferredToExperts || caseData.expertReferral?.isReferred || (caseData.expertReferral && (caseData.expertReferral.expertOffice || caseData.expertReferral.expertName))) && (
+          <div className="border border-amber-300 rounded-xl overflow-hidden shadow-xs bg-amber-50/20">
+            <div className="bg-amber-100/80 border-b border-amber-300 px-3.5 py-2 font-black text-[#78350f] flex justify-between items-center">
+              <span>⚖️ خامساً: تفاصيل وبيانات إحالة الملف لمكتب خبراء وزارة العدل</span>
+              <span className="text-[10px] bg-amber-300 text-amber-950 px-2 py-0.5 rounded font-black">
+                {caseData.expertReferral?.status || 'قيد مباشرة الخبير'}
+              </span>
+            </div>
+            
+            <div className="p-3 space-y-3 text-xs">
+              {/* Expert Meta Grid */}
+              <div className="grid grid-cols-2 gap-2 bg-white p-2.5 rounded-lg border border-amber-200">
+                <div><strong>مكتب الخبراء المختص:</strong> {caseData.expertReferral?.expertOffice || 'خبراء محكمة جنوب/شمال'}</div>
+                <div><strong>اسم الخبير المباشر:</strong> {caseData.expertReferral?.expertName || 'لم يحدد بعد'} {caseData.expertReferral?.expertPhone ? `(${caseData.expertReferral.expertPhone})` : ''}</div>
+                <div><strong>رقم ملف الخبراء:</strong> <span className="font-mono font-bold text-amber-800">{caseData.expertReferral?.fileNumber || 'غير مدون'}</span></div>
+                <div><strong>تاريخ القرار الإحالة:</strong> {caseData.expertReferral?.referralDate || 'غير مدون'}</div>
+                {caseData.expertReferral?.referralReason && (
+                  <div className="col-span-2 text-slate-700 pt-1 border-t border-slate-100">
+                    <strong>سبب الإحالة وقرار المحكمة:</strong> {caseData.expertReferral.referralReason}
+                  </div>
+                )}
+                {caseData.expertReferral?.returnedToCourtAt && (
+                  <div className="col-span-2 bg-emerald-50 text-emerald-900 p-1.5 rounded border border-emerald-200 font-bold">
+                    ✅ تمت إعادة القضية للمحكمة بتاريخ: {caseData.expertReferral.returnedToCourtAt} {caseData.expertReferral.returnedToCourtNotes ? `(${caseData.expertReferral.returnedToCourtNotes})` : ''}
+                  </div>
+                )}
+              </div>
+
+              {/* Expert Sub-Sessions */}
+              {caseData.expertReferral?.sessions && caseData.expertReferral.sessions.length > 0 && (
+                <div className="space-y-1">
+                  <span className="font-bold text-[#78350f] text-[11px] block">📅 جلسات ومواعيد المباشرة بالخبراء:</span>
+                  <table className="w-full text-right border-collapse bg-white border border-amber-200 rounded">
+                    <thead>
+                      <tr className="bg-amber-100/60 font-bold border-b border-amber-200">
+                        <th className="p-1.5 border border-amber-200">تاريخ الجلسة</th>
+                        <th className="p-1.5 border border-amber-200">نوع الجلسة</th>
+                        <th className="p-1.5 border border-amber-200">المكان</th>
+                        <th className="p-1.5 border border-amber-200">ما تم بالجلسة والإجراء</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {caseData.expertReferral.sessions.map((es, idx) => (
+                        <tr key={es.id || idx}>
+                          <td className="p-1.5 border border-amber-100 font-bold font-mono text-amber-900">{es.date} {es.time ? `(${es.time})` : ''}</td>
+                          <td className="p-1.5 border border-amber-100">{es.sessionType}</td>
+                          <td className="p-1.5 border border-amber-100">{es.location || 'مكتب الخبير'}</td>
+                          <td className="p-1.5 border border-amber-100 font-semibold">{es.decisionOrAction || 'تم الحضور والمتابعة'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Expert Documents Submitted */}
+              {caseData.expertReferral?.documents && caseData.expertReferral.documents.length > 0 && (
+                <div className="space-y-1">
+                  <span className="font-bold text-[#78350f] text-[11px] block">📂 المستندات والمذكرات المودعة لدى الخبير:</span>
+                  <table className="w-full text-right border-collapse bg-white border border-amber-200 rounded">
+                    <thead>
+                      <tr className="bg-amber-100/60 font-bold border-b border-amber-200">
+                        <th className="p-1.5 border border-amber-200">اسم المستند</th>
+                        <th className="p-1.5 border border-amber-200">تاريخ الإيداع</th>
+                        <th className="p-1.5 border border-amber-200">ملاحظات</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {caseData.expertReferral.documents.map((ed, idx) => (
+                        <tr key={ed.id || idx}>
+                          <td className="p-1.5 border border-amber-100 font-bold">📄 {ed.title}</td>
+                          <td className="p-1.5 border border-amber-100 font-mono">{ed.submissionDate}</td>
+                          <td className="p-1.5 border border-amber-100">{ed.notes || ed.submittedBy || 'مكتمل'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Expert Requests */}
+              {caseData.expertReferral?.requests && caseData.expertReferral.requests.length > 0 && (
+                <div className="space-y-1">
+                  <span className="font-bold text-[#78350f] text-[11px] block">📝 طلبات الخبير والمستندات المطلوبة:</span>
+                  <table className="w-full text-right border-collapse bg-white border border-amber-200 rounded">
+                    <thead>
+                      <tr className="bg-amber-100/60 font-bold border-b border-amber-200">
+                        <th className="p-1.5 border border-amber-200">بيان المطلوب</th>
+                        <th className="p-1.5 border border-amber-200">تاريخ الطلب والمهلة</th>
+                        <th className="p-1.5 border border-amber-200">حالة التقديم</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {caseData.expertReferral.requests.map((er, idx) => (
+                        <tr key={er.id || idx}>
+                          <td className="p-1.5 border border-amber-100 font-semibold">{er.requestText}</td>
+                          <td className="p-1.5 border border-amber-100 font-mono">{er.deadlineDate || er.requestedAt}</td>
+                          <td className="p-1.5 border border-amber-100 font-bold">{er.status}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Expert Report Outcome */}
+              {caseData.expertReferral?.report && caseData.expertReferral.report.summary && (
+                <div className="bg-white p-2.5 rounded border border-amber-300 space-y-1">
+                  <div className="flex justify-between items-center">
+                    <span className="font-black text-amber-950 text-xs">📊 ملخص ونتيجة تقرير الخبير النهائي:</span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 border border-emerald-300">
+                      {caseData.expertReferral.report.resultStatus || 'تم الإيداع'}
+                    </span>
+                  </div>
+                  <p className="text-slate-800 leading-relaxed font-medium">{caseData.expertReferral.report.summary}</p>
+                  {caseData.expertReferral.report.lawyerNotes && (
+                    <p className="text-slate-600 text-[11px] pt-1 border-t border-slate-100">
+                      <strong>تعقيب الدفاع:</strong> {caseData.expertReferral.report.lawyerNotes}
+                    </p>
+                  )}
+                </div>
+              )}
+
+            </div>
+          </div>
+        )}
+
+        {/* SECTION 6: FILED DOCUMENTS & ATTACHMENTS */}
+        <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+          <div className="bg-amber-100/70 border-b border-amber-200 px-3.5 py-2 font-black text-[#78350f] flex justify-between items-center">
+            <span>📎 سادساً: المستندات والأوراق والمذكرات المودعة بالملف</span>
+            <span className="text-[10px] bg-amber-200/80 px-2 py-0.5 rounded text-amber-900 font-bold">عدد المستندات: {filesList.length}</span>
+          </div>
+          {filesList.length === 0 ? (
+            <p className="p-3 text-slate-500 italic text-center bg-slate-50">لا توجد مستندات إضافية مؤرشفة بالملف.</p>
+          ) : (
+            <table className="w-full text-right border-collapse">
+              <thead>
+                <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                  <th className="p-2 w-5/12">اسم المستند المرفق</th>
+                  <th className="p-2 w-3/12">تصنيف المستند</th>
+                  <th className="p-2 w-2/12">تاريخ الإيداع</th>
+                  <th className="p-2 w-2/12">الحجم والناشر</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filesList.map((f, idx) => (
+                  <tr key={f.id || idx} className="border-b border-slate-100">
+                    <td className="p-2 font-semibold text-slate-900">📄 {f.name}</td>
+                    <td className="p-2"><span className="bg-slate-100 border border-slate-200 px-2 py-0.5 rounded text-[10px] text-slate-700">{f.category || f.type || 'مستند قانوني'}</span></td>
+                    <td className="p-2 font-mono text-[11px] text-slate-600">{f.uploadDate || '2026-01-01'}</td>
+                    <td className="p-2 text-slate-500">{f.size || '1.2 MB'} ({f.uploadedBy || 'المكتب'})</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* SECTION 7: FINANCIAL STATEMENT & FEES SUMMARY */}
+        <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+          <div className="bg-amber-100/70 border-b border-amber-200 px-3.5 py-2 font-black text-[#78350f] flex justify-between items-center">
+            <span>💰 سابعاً: الموقف المالي وتصفية الأتعاب والرسوم</span>
+            <span className="text-[10px] bg-emerald-700 text-white px-2.5 py-0.5 rounded font-black">الصافي المتبقي: {remainingFees.toLocaleString()} ج.م</span>
+          </div>
+          <table className="w-full text-right border-collapse">
+            <tbody>
+              <tr className="border-b border-slate-100">
+                <td className="p-2.5 bg-slate-50 font-bold text-slate-700 w-1/4">إجمالي الأتعاب المقررة:</td>
+                <td className="p-2.5 font-black text-blue-900 w-1/4">{caseData.totalFees ? `${caseData.totalFees.toLocaleString()} ج.م` : '0 ج.م'}</td>
+                <td className="p-2.5 bg-slate-50 font-bold text-slate-700 w-1/4">المبلغ المسدد المقبوض:</td>
+                <td className="p-2.5 font-black text-emerald-800 w-1/4">{totalPaid ? `${totalPaid.toLocaleString()} ج.م` : '0 ج.م'}</td>
+              </tr>
+              <tr>
+                <td className="p-2.5 bg-slate-50 font-bold text-slate-700">مصروفات المحاكم الفعلية:</td>
+                <td className="p-2.5 font-bold text-slate-800">{totalExpenses ? `${totalExpenses.toLocaleString()} ج.م` : '0 ج.م'}</td>
+                <td className="p-2.5 bg-slate-50 font-bold text-slate-700">المبلغ الصافي المتبقي المطلوب:</td>
+                <td className="p-2.5 font-black text-rose-700 bg-rose-50/50">{remainingFees ? `${remainingFees.toLocaleString()} ج.م` : '0 ج.م (خالص السداد)'}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* SECTION 8: NEXT HEARING & RECOMMENDATIONS */}
+        <div className="border border-amber-300 rounded-xl p-3 bg-amber-50/40 flex justify-between items-center gap-4">
+          <div>
+            <span className="font-black text-[#78350f] text-xs block mb-0.5">📅 الجلسة القادمة وتوصية الدفاع:</span>
+            <p className="text-slate-800 font-bold text-xs">
+              {caseData.nextHearingDate ? `موعد الجلسة: ${caseData.nextHearingDate} ${caseData.nextHearingTime ? 'الساعة ' + caseData.nextHearingTime : ''}` : '❌ لم تحدد الجلسة القادمة بعد'}
+            </p>
+          </div>
+          <div className="text-left font-semibold text-slate-600 text-[11px]">
+            تاريخ إصدار التقرير الرسمي: {formattedDate}
+          </div>
+        </div>
+
       </div>
 
-      <div className="mt-12 flex justify-between items-center text-xs">
+      {/* OFFICIAL STAMP & AUTHORIZATION SIGNATURES */}
+      <div className="mt-10 pt-6 border-t border-slate-200 grid grid-cols-3 gap-4 text-center items-center">
         <div>
-          <p className="font-black">توقيع المستشار المسؤول:</p>
-          <p className="mt-6 font-semibold">المحامي / عربي رميح</p>
+          <p className="font-black text-slate-900 text-xs">توقيع المستشار المسؤول:</p>
+          <p className="mt-6 font-bold text-slate-700 text-xs">المحامي / عربي رميح</p>
+          <div className="mt-2 border-b border-dotted border-slate-400 w-32 mx-auto"></div>
         </div>
-        <div className="text-left">
-          <p className="font-bold">مؤسسة رميح للمحاماة</p>
-          <p className="text-[10px] text-slate-400">ختم المؤسسة الرسمي معتمد سحابياً</p>
+
+        <div>
+          <div className="w-24 h-24 mx-auto rounded-full border-4 border-double border-[#b45309] p-1 rotate-[-6deg] opacity-90 flex flex-col items-center justify-center text-[#b45309]">
+            <div className="w-full h-full border border-dashed border-[#b45309] rounded-full flex flex-col items-center justify-center p-1">
+              <span className="text-xs">⚖️</span>
+              <span className="text-[8px] font-black leading-tight">مؤسسة رميح للمحاماة</span>
+              <span className="text-[7px] font-bold">معتمد ورسمي</span>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <p className="font-black text-slate-900 text-xs">اعتماد الإدارة العليا للمؤسسة:</p>
+          <p className="mt-6 font-bold text-slate-700 text-xs">توقيع المدير العام</p>
+          <div className="mt-2 border-b border-dotted border-slate-400 w-32 mx-auto"></div>
         </div>
       </div>
+
+      {/* FOOTER */}
+      <div className="mt-6 pt-3 border-t border-slate-100 flex justify-between items-center text-[9px] text-slate-400">
+        <p>تم استخراج هذا التقرير إلكترونياً من بوابة مؤسسة رميح للمحاماة الذكية</p>
+        <p>جميع الحقوق محفوظة © {new Date().getFullYear()}</p>
+      </div>
+
     </div>
   );
 }

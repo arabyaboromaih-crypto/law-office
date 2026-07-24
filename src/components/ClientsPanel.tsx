@@ -2063,7 +2063,7 @@ export default function ClientsPanel({
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-150 flex items-center justify-between gap-4">
               <div>
                 <p className="text-[11px] font-black text-slate-900">سجل الهوية والقيد التجاري</p>
-                <p className="text-[9px] text-slate-500 font-bold mt-0.5">رقم السجل: {viewDocsCompany.registrationNumber} | رقم البطاقة الضريبية: {viewDocsCompany.taxCardNumber}</p>
+                <p className="text-[9px] text-slate-500 font-bold mt-0.5">رقم السجل: {(viewDocsCompany as any).crNumber || viewDocsCompany.commercialRegister || (viewDocsCompany as any).registrationNumber} | رقم البطاقة الضريبية: {(viewDocsCompany as any).taxNumber || viewDocsCompany.taxCard || (viewDocsCompany as any).taxCardNumber}</p>
               </div>
               <div className="flex gap-2">
                 <span className="bg-amber-50 text-amber-700 border border-amber-200/50 px-3 py-1 rounded-lg text-[10px] font-black">
@@ -2097,7 +2097,7 @@ export default function ClientsPanel({
                         <div>
                           <p className="text-xs font-black text-slate-900 group-hover:text-amber-600 transition-colors">{doc.name}</p>
                           <p className="text-[9px] text-slate-400 font-bold mt-0.5">
-                            النوع: {doc.type.toUpperCase()} | الحجم: {doc.size || 'غير معروف'}
+                            النوع: {doc.type.toUpperCase()} | الحجم: {(doc as any).size || 'غير معروف'}
                           </p>
                         </div>
                       </div>

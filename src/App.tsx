@@ -1794,50 +1794,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Floating Custom PWA Install Prompt Banner */}
-      {showInstallBanner && (
-        <div className="fixed bottom-6 left-6 z-50 max-w-sm w-full bg-slate-900 border border-amber-500/30 text-white rounded-2xl p-5 shadow-2xl flex flex-col gap-4 animate-slideInRight" dir="rtl">
-          <div className="flex items-start gap-3">
-            <div className="bg-amber-500/10 border border-amber-500/30 text-amber-500 p-2.5 rounded-xl shrink-0">
-              <Scale className="w-6 h-6 text-amber-500" />
-            </div>
-            <div className="space-y-1">
-              <h4 className="text-xs font-black text-white">تثبيت التطبيق على جهازك</h4>
-              <p className="text-[11px] text-slate-300 leading-relaxed">
-                قم بتثبيت التطبيق الآن على هاتفك الـ Android أو حاسوبك المكتبي للوصول السريع والتشغيل السلس كبرنامج مستقل.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
-                if (isInIframe) {
-                  const targetUrl = window.location.origin + window.location.pathname + '?triggerInstall=true' + window.location.hash;
-                  const newWin = window.open(targetUrl, '_blank');
-                  if (newWin) {
-                    newWin.focus();
-                  } else {
-                    setShowInstallModal(true);
-                  }
-                } else {
-                  triggerInstall();
-                }
-              }}
-              className="flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs py-2 px-4 rounded-lg transition-all text-center cursor-pointer"
-            >
-              تثبيت الآن
-            </button>
-            <button
-              onClick={() => setShowInstallBanner(false)}
-              className="bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-medium text-xs py-2 px-4 rounded-lg transition-all text-center cursor-pointer"
-            >
-              لاحقاً
-            </button>
-          </div>
-        </div>
-      )}
-      
       {/* Top Professional Header Ribbon */}
       <header className={`bg-gradient-to-r ${isScrolled ? 'from-slate-950/85 via-slate-900/85 to-slate-950/85 backdrop-blur-md border-b border-amber-500/35 shadow-lg shadow-black/40' : 'from-slate-950 via-slate-900 to-slate-950 border-b border-amber-500/20 shadow-md'} text-white px-3 md:px-5 h-14 md:h-16 flex items-center justify-between gap-3 sticky top-0 z-[100] transition-all duration-300`}>
         <div className="flex items-center gap-2 md:gap-3 overflow-hidden">
@@ -1900,33 +1856,6 @@ export default function App() {
               {currentUser.fullName.charAt(0)}
             </div>
           </div>
-
-          {/* PWA Install Button */}
-          {!isInstalledApp && (
-            <button
-              onClick={() => {
-                const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
-                if (isInIframe) {
-                  const targetUrl = window.location.origin + window.location.pathname + '?triggerInstall=true' + window.location.hash;
-                  const newWin = window.open(targetUrl, '_blank');
-                  if (newWin) {
-                    newWin.focus();
-                  } else {
-                    setShowInstallModal(true);
-                  }
-                } else if (deferredPrompt) {
-                  triggerInstall();
-                } else {
-                  setShowInstallModal(true);
-                }
-              }}
-              className="bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 hover:border-amber-500/50 text-amber-400 hover:text-amber-300 font-extrabold text-[10px] md:text-xs w-10 h-10 md:w-auto md:h-auto p-0 md:py-2 md:px-4 rounded-xl flex items-center justify-center gap-1.5 md:gap-2 transition-all active:scale-95 duration-150 cursor-pointer shadow-lg shadow-amber-950/20 shrink-0"
-              title="تثبيت التطبيق على جهازك للوصول السريع والتشغيل كبرنامج مستقل"
-            >
-              <Download className="w-3.5 h-3.5 md:w-4 md:h-4 text-amber-500 animate-bounce" />
-              <span className="hidden md:inline">تثبيت التطبيق</span>
-            </button>
-          )}
 
           {/* Premium Dedicated Logout Button on the absolute top-left */}
           <button

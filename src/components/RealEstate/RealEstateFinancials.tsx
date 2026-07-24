@@ -61,14 +61,13 @@ export default function RealEstateFinancials({
   const [currentTab, setCurrentTab] = useState<
     'overview' | 'dues' | 'payouts' | 'property_statements' | 'owner_statements' | 'tenant_statements' | 'closing' | 'reports'
   >(() => {
-    if (activeSubTab === 'payouts') return 'payouts';
-    if (activeSubTab === 'reports') return 'reports';
     if (activeSubTab === 'property_statements') return 'property_statements';
     if (activeSubTab === 'owner_statements') return 'owner_statements';
     if (activeSubTab === 'tenant_statements') return 'tenant_statements';
     if (activeSubTab === 'closing') return 'closing';
-    if (activeSubTab === 'overview' || activeSubTab === 'financials') return 'overview';
-    return 'dues';
+    if (activeSubTab === 'reports') return 'reports';
+    if (activeSubTab === 'dues') return 'dues';
+    return 'payouts';
   });
 
   // Filter States
@@ -415,14 +414,11 @@ export default function RealEstateFinancials({
       <div className="flex flex-wrap items-center justify-between gap-3 p-2 bg-[#132238]/40 backdrop-blur-md rounded-2xl border border-[#D4A84F]/15">
         <div className="flex flex-wrap items-center gap-1.5">
           {[
-            { id: 'overview', label: 'اللوحة المالية الشاملة', icon: PieChart },
-            { id: 'dues', label: 'الإيجارات والتحصيل', icon: Receipt },
             { id: 'payouts', label: 'مستحقات الملاك والسُلف', icon: Wallet },
             { id: 'property_statements', label: 'كشف حساب العقارات', icon: Building },
             { id: 'owner_statements', label: 'كشف حساب الملاك', icon: Users },
             { id: 'tenant_statements', label: 'كشف حساب المستأجرين', icon: FileText },
-            { id: 'closing', label: 'المطابقة والإغلاق المالي', icon: Lock },
-            { id: 'reports', label: 'التقارير المالية والطباعة', icon: Printer }
+            { id: 'closing', label: 'المطابقة والإغلاق المالي', icon: Lock }
           ].map((tab) => (
             <button
               key={tab.id}
@@ -440,23 +436,6 @@ export default function RealEstateFinancials({
               <span>{tab.label}</span>
             </button>
           ))}
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => handleOpenReportPreview(reportType)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#08111F]/70 border border-[#D4A84F]/30 text-[#D4A84F] hover:bg-[#D4A84F]/10 text-xs font-bold transition-all cursor-pointer"
-          >
-            <Eye className="w-3.5 h-3.5 stroke-[2.2]" />
-            <span>معاينة التقرير</span>
-          </button>
-          <button
-            onClick={() => handlePrintReportDirectly(reportType)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#D4A84F] to-[#B38734] text-slate-950 text-xs font-black hover:brightness-110 shadow-sm transition-all cursor-pointer"
-          >
-            <Printer className="w-3.5 h-3.5 stroke-[2.5]" />
-            <span>طباعة التقرير الرسمي PDF</span>
-          </button>
         </div>
       </div>
 

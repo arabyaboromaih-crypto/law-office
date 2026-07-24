@@ -674,7 +674,7 @@ export default function CasesPanel({
         const newDoc: CompanyDoc = {
           id: newDocId,
           name: docName.trim(),
-          type: docType === 'doc' ? 'pdf' : docType as any,
+          type: (docType as any) === 'doc' ? 'pdf' : (docType as any),
           uploadDate: todayStr,
           fileUrl: downloadURL,
           storagePath: storagePath,
@@ -3093,8 +3093,93 @@ export default function CasesPanel({
               </div>
             `).join('')}
 
-            <!-- SECTION 5 -->
-            <div class="section-title">خامساً: قرارات الهيئة القضائية المعتمدة السابقة</div>
+            <!-- SECTION 5: EXPERT REFERRAL DETAILS -->
+            ${(c.isReferredToExperts || c.expertReferral?.isReferred || (c.expertReferral && (c.expertReferral.expertOffice || c.expertReferral.expertName))) ? `
+              <div class="section-title">خامساً: تفاصيل وبيانات إحالة القضية إلى خبراء وزارة العدل</div>
+              <table class="data-table">
+                <tr>
+                  <th>مكتب الخبراء المختص</th>
+                  <td class="highlight-cell">${c.expertReferral?.expertOffice || 'غير محدد'}</td>
+                  <th>اسم الخبير المباشر</th>
+                  <td class="highlight-cell">${c.expertReferral?.expertName || 'لم يحدد بعد'} ${c.expertReferral?.expertPhone ? '(' + c.expertReferral.expertPhone + ')' : ''}</td>
+                </tr>
+                <tr>
+                  <th>رقم ملف الخبراء</th>
+                  <td style="font-family: monospace; font-weight: bold; color: #b45309;">${c.expertReferral?.fileNumber || 'غير مدون'}</td>
+                  <th>تاريخ قرار الإحالة</th>
+                  <td>${c.expertReferral?.referralDate || 'غير مدون'}</td>
+                </tr>
+                <tr>
+                  <th>حالة ملف الخبراء</th>
+                  <td style="font-weight: bold; color: #0284c7;">${c.expertReferral?.status || 'قيد المباشرة'}</td>
+                  <th>تاريخ العودة للمحكمة</th>
+                  <td>${c.expertReferral?.returnedToCourtAt || 'قيد المباشرة لدى الخبراء'}</td>
+                </tr>
+                ${c.expertReferral?.referralReason ? `
+                  <tr>
+                    <th>سبب وتفاصيل الإحالة</th>
+                    <td colspan="3">${c.expertReferral.referralReason}</td>
+                  </tr>
+                ` : ''}
+              </table>
+
+              ${c.expertReferral?.sessions && c.expertReferral.sessions.length > 0 ? `
+                <div style="font-weight: bold; color: #78350f; margin-top: 10px; margin-bottom: 5px; font-size: 11px;">📅 جلسات ومواعيد المباشرة بالخبراء (${c.expertReferral.sessions.length}):</div>
+                <table class="data-table">
+                  <thead>
+                    <tr style="background-color: #fef3c7;">
+                      <th style="width: 20%; text-align: right;">تاريخ الجلسة</th>
+                      <th style="width: 20%; text-align: right;">نوع الجلسة</th>
+                      <th style="width: 20%; text-align: right;">المكان</th>
+                      <th style="text-align: right;">ما تم بالجلسة والإجراء</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${c.expertReferral.sessions.map(es => `
+                      <tr>
+                        <td style="font-family: monospace; font-weight: bold; color: #b45309;">${es.date} ${es.time ? '(' + es.time + ')' : ''}</td>
+                        <td>${es.sessionType}</td>
+                        <td>${es.location || 'مكتب الخبير'}</td>
+                        <td style="font-weight: 600;">${es.decisionOrAction || 'تم الحضور والمتابعة'}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              ` : ''}
+
+              ${c.expertReferral?.documents && c.expertReferral.documents.length > 0 ? `
+                <div style="font-weight: bold; color: #78350f; margin-top: 10px; margin-bottom: 5px; font-size: 11px;">📂 المستندات والمذكرات المودعة لدى الخبير (${c.expertReferral.documents.length}):</div>
+                <table class="data-table">
+                  <thead>
+                    <tr style="background-color: #fef3c7;">
+                      <th style="width: 45%; text-align: right;">اسم المستند</th>
+                      <th style="width: 25%; text-align: right;">تاريخ الإيداع</th>
+                      <th style="text-align: right;">ملاحظات</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${c.expertReferral.documents.map(ed => `
+                      <tr>
+                        <td style="font-weight: 600;">📄 ${ed.title}</td>
+                        <td style="font-family: monospace;">${ed.submissionDate}</td>
+                        <td>${ed.notes || ed.submittedBy || 'مكتمل'}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              ` : ''}
+
+              ${c.expertReferral?.report && c.expertReferral.report.summary ? `
+                <div style="border: 1px solid #fcd34d; background-color: #fffbeb; padding: 10px; border-radius: 8px; margin-top: 10px; margin-bottom: 12px;">
+                  <div style="font-weight: 900; color: #78350f; font-size: 11px; margin-bottom: 4px;">📊 ملخص ونتيجة تقرير الخبير النهائي:</div>
+                  <div style="color: #1e293b; font-size: 11px; line-height: 1.5;">${c.expertReferral.report.summary}</div>
+                  ${c.expertReferral.report.resultStatus ? `<div style="font-weight: bold; color: #059669; font-size: 10px; margin-top: 4px;">موقف النتيجة: ${c.expertReferral.report.resultStatus}</div>` : ''}
+                </div>
+              ` : ''}
+            ` : ''}
+
+            <!-- SECTION 6 -->
+            <div class="section-title">سادساً: قرارات الهيئة القضائية المعتمدة السابقة</div>
             ${previousDecisions.length === 0 ? `
               <p style="color: #64748b; font-style: italic; text-align: center; padding: 10px; border: 1px dashed #cbd5e1; border-radius: 6px;">لم تسجل مخرجات قرارات في السجل حتى تاريخه.</p>
             ` : `
@@ -3112,8 +3197,8 @@ export default function CasesPanel({
               </table>
             `}
 
-            <!-- SECTION 6: Saved Documents and Attachments -->
-            <div class="section-title">سادساً: المرفقات والمستندات المودعة بالملف القضائي</div>
+            <!-- SECTION 7: Saved Documents and Attachments -->
+            <div class="section-title">سابعاً: المرفقات والمستندات المودعة بالملف القضائي</div>
             ${!c.files || c.files.length === 0 ? `
               <p style="color: #64748b; font-style: italic; text-align: center; padding: 12px; border: 1px dashed #cbd5e1; border-radius: 6px; margin-bottom: 12px;">لا توجد مستندات أو مرفقات مؤرشفة بالملف حتى تاريخه.</p>
             ` : `
@@ -3141,8 +3226,8 @@ export default function CasesPanel({
               </table>
             `}
 
-            <!-- SECTION 7 -->
-            <div class="section-title">سابعاً: الجلسة القادمة وتفاصيل التنفيذ والرسوم المالية</div>
+            <!-- SECTION 8 -->
+            <div class="section-title">ثامناً: الجلسة القادمة وتفاصيل التنفيذ والرسوم المالية</div>
             <table class="data-table">
               <tr>
                 <th style="background-color: #fffbeb;">تاريخ الجلسة القادمة</th>
@@ -4530,17 +4615,6 @@ export default function CasesPanel({
               
               {/* Clients Section */}
               <FormCard title="الموكلين وأصحاب الشأن (الطرف الأول)" icon={UserCheck}>
-                <div className="absolute top-4 left-4">
-                  <PrimaryButton
-                    type="button"
-                    onClick={addFormClient}
-                    className="px-3 py-1.5 text-xs flex items-center gap-1.5"
-                  >
-                    <PlusCircle className="w-4 h-4" />
-                    إضافة موكل جديد
-                  </PrimaryButton>
-                </div>
-
                 <div className="space-y-4 pt-2">
                   {formClients.map((cl, idx) => (
                     <div key={idx} className="bg-slate-50 hover:bg-slate-100/50 border border-slate-150 rounded-xl p-4 transition-all duration-200 relative">
@@ -4645,17 +4719,6 @@ export default function CasesPanel({
 
               {/* Opponents Section */}
               <FormCard title="الخصوم وأطراف النزاع (الطرف الثاني)" icon={ShieldAlert}>
-                <div className="absolute top-4 left-4">
-                  <PrimaryButton
-                    type="button"
-                    onClick={addFormOpponent}
-                    className="px-3 py-1.5 text-xs flex items-center gap-1.5"
-                  >
-                    <PlusCircle className="w-4 h-4 text-amber-400" />
-                    إضافة خصم جديد
-                  </PrimaryButton>
-                </div>
-
                 <div className="space-y-4 pt-2">
                   {formOpponents.map((opp, idx) => (
                     <div key={idx} className="bg-slate-50 hover:bg-slate-100/50 border border-slate-150 rounded-xl p-4 transition-all duration-200 relative">
@@ -5422,20 +5485,20 @@ export default function CasesPanel({
                 </button>
                 <button
                   type="button"
-                  disabled={editingCompany.stage !== 'post-establishment' && companyStageTab !== 'post-establishment'}
+                  disabled={(editingCompany.stage as any) !== 'post-establishment' && companyStageTab !== 'post-establishment'}
                   onClick={() => {
                     setCompanyStageTab('post-establishment');
                   }}
                   className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition-all ${
                     companyStageTab === 'post-establishment'
                       ? 'bg-amber-500 text-slate-950 shadow-md scale-[1.02]'
-                      : (editingCompany.stage === 'post-establishment' || companyStageTab === 'post-establishment')
+                      : ((editingCompany.stage as any) === 'post-establishment' || (companyStageTab as string) === 'post-establishment')
                         ? 'text-slate-400 hover:text-slate-200'
                         : 'text-slate-600 cursor-not-allowed opacity-50'
                   }`}
                 >
                   📈 مرحلة ما بعد التأسيس (الخدمات والخصومات)
-                  {(editingCompany.stage !== 'post-establishment' && companyStageTab !== 'post-establishment') && (
+                  {((editingCompany.stage as any) !== 'post-establishment' && companyStageTab !== 'post-establishment') && (
                     <span className="text-[9px] bg-slate-900 text-amber-500 px-1.5 py-0.5 rounded border border-slate-750">🔒 مغلق</span>
                   )}
                 </button>
@@ -6268,8 +6331,8 @@ export default function CasesPanel({
                     <button
                       type="button"
                       onClick={() => {
-                        const tabs: ('primary' | 'partners' | 'documents')[] = ['primary', 'partners', 'documents'];
-                        const currentIdx = tabs.indexOf(activeCompanyFormTab);
+                        const tabs = ['primary', 'partners', 'documents'] as const;
+                        const currentIdx = tabs.indexOf(activeCompanyFormTab as any);
                         if (currentIdx > 0) {
                           setActiveCompanyFormTab(tabs[currentIdx - 1]);
                         }
@@ -6307,9 +6370,9 @@ export default function CasesPanel({
                             return;
                           }
                         }
-                        const tabs: ('primary' | 'partners' | 'documents')[] = ['primary', 'partners', 'documents'];
-                        const currentIdx = tabs.indexOf(activeCompanyFormTab);
-                        if (currentIdx < tabs.length - 1) {
+                        const tabs = ['primary', 'partners', 'documents'] as const;
+                        const currentIdx = tabs.indexOf(activeCompanyFormTab as any);
+                        if (currentIdx >= 0 && currentIdx < tabs.length - 1) {
                           setActiveCompanyFormTab(tabs[currentIdx + 1]);
                         }
                       }}
@@ -6785,9 +6848,60 @@ export default function CasesPanel({
                     )}
                   </div>
 
-                  {/* PDF Details Section 5: Decisions */}
+                  {/* PDF Details Section 5: Expert Referral (If applicable) */}
+                  {(showReportViewer.isReferredToExperts || showReportViewer.expertReferral?.isReferred || (showReportViewer.expertReferral && (showReportViewer.expertReferral.expertOffice || showReportViewer.expertReferral.expertName))) && (
+                    <div className="space-y-3 text-right">
+                      <h4 className="text-xs font-black text-amber-900 bg-amber-50 border-r-4 border-amber-600 px-3 py-1.5 rounded-l-md flex justify-between items-center">
+                        <span>خامساً: تفاصيل وبيانات إحالة القضية إلى خبراء وزارة العدل</span>
+                        <span className="text-[10px] bg-amber-200 text-amber-950 font-bold px-2 py-0.5 rounded">
+                          {showReportViewer.expertReferral?.status || 'قيد مباشرة الخبير'}
+                        </span>
+                      </h4>
+                      <div className="border border-amber-200 rounded-lg p-3 bg-amber-50/20 space-y-2 text-xs">
+                        <div className="grid grid-cols-2 gap-2 bg-white p-2.5 rounded border border-amber-200">
+                          <div><strong>مكتب الخبراء:</strong> {showReportViewer.expertReferral?.expertOffice || 'غير محدد'}</div>
+                          <div><strong>اسم الخبير:</strong> {showReportViewer.expertReferral?.expertName || 'لم يحدد بعد'} {showReportViewer.expertReferral?.expertPhone ? `(${showReportViewer.expertReferral.expertPhone})` : ''}</div>
+                          <div><strong>رقم ملف الخبراء:</strong> <span className="font-mono font-bold text-amber-800">{showReportViewer.expertReferral?.fileNumber || 'غير مدون'}</span></div>
+                          <div><strong>تاريخ القرار:</strong> {showReportViewer.expertReferral?.referralDate || 'غير مدون'}</div>
+                        </div>
+
+                        {showReportViewer.expertReferral?.sessions && showReportViewer.expertReferral.sessions.length > 0 && (
+                          <div className="space-y-1">
+                            <span className="font-bold text-amber-900 text-[11px] block">📅 جلسات ومواعيد المباشرة بالخبراء:</span>
+                            <table className="w-full text-right text-xs bg-white border border-amber-200 rounded">
+                              <thead>
+                                <tr className="bg-amber-100/60 font-bold border-b border-amber-200">
+                                  <th className="p-1.5 text-right">تاريخ الجلسة</th>
+                                  <th className="p-1.5 text-right">نوع الجلسة</th>
+                                  <th className="p-1.5 text-right">ما تم والإجراء</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-amber-100">
+                                {showReportViewer.expertReferral.sessions.map((es, idx) => (
+                                  <tr key={idx}>
+                                    <td className="p-1.5 font-bold text-amber-800 font-mono">{es.date}</td>
+                                    <td className="p-1.5">{es.sessionType}</td>
+                                    <td className="p-1.5 font-semibold">{es.decisionOrAction || 'حضور ومتابعة'}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+
+                        {showReportViewer.expertReferral?.report?.summary && (
+                          <div className="bg-white p-2 rounded border border-amber-200">
+                            <span className="font-bold text-amber-900 text-[11px] block mb-1">📊 ملخص ونتيجة تقرير الخبير:</span>
+                            <p className="text-slate-700 text-xs leading-relaxed">{showReportViewer.expertReferral.report.summary}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* PDF Details Section 6: Decisions */}
                   <div className="space-y-3 text-right">
-                    <h4 className="text-xs font-black text-amber-900 bg-amber-50 border-r-4 border-amber-600 px-3 py-1.5 rounded-l-md">خامساً: قرارات الهيئة القضائية المعتمدة السابقة</h4>
+                    <h4 className="text-xs font-black text-amber-900 bg-amber-50 border-r-4 border-amber-600 px-3 py-1.5 rounded-l-md">سادساً: قرارات الهيئة القضائية المعتمدة السابقة</h4>
                     {previousDecisions.length === 0 ? (
                       <p className="text-xs text-slate-400 italic text-center py-4 bg-slate-50 border border-slate-200 rounded-lg text-right">لم تسجل مخرجات قرارات قضائية في السجل حتى تاريخه.</p>
                     ) : (
@@ -6812,9 +6926,9 @@ export default function CasesPanel({
                     )}
                   </div>
 
-                  {/* PDF Details Section 6: Attachments */}
+                  {/* PDF Details Section 7: Attachments */}
                   <div className="space-y-3 text-right">
-                    <h4 className="text-xs font-black text-amber-900 bg-amber-50 border-r-4 border-amber-600 px-3 py-1.5 rounded-l-md">سادساً: المرفقات والمستندات المودعة بالملف القضائي</h4>
+                    <h4 className="text-xs font-black text-amber-900 bg-amber-50 border-r-4 border-amber-600 px-3 py-1.5 rounded-l-md">سابعاً: المرفقات والمستندات المودعة بالملف القضائي</h4>
                     {!showReportViewer.files || showReportViewer.files.length === 0 ? (
                       <p className="text-xs text-slate-400 italic text-center py-4 bg-slate-50 border border-slate-200 rounded-lg text-right">لا توجد مستندات أو مرفقات مؤرشفة بالملف حتى تاريخه.</p>
                     ) : (
@@ -6847,9 +6961,9 @@ export default function CasesPanel({
                     )}
                   </div>
 
-                  {/* PDF Details Section 7: Financials and Next Session */}
+                  {/* PDF Details Section 8: Financials and Next Session */}
                   <div className="space-y-3 text-right">
-                    <h4 className="text-xs font-black text-amber-900 bg-amber-50 border-r-4 border-amber-600 px-3 py-1.5 rounded-l-md">سابعاً: الجلسة القادمة وتفاصيل الرسوم المالية</h4>
+                    <h4 className="text-xs font-black text-amber-900 bg-amber-50 border-r-4 border-amber-600 px-3 py-1.5 rounded-l-md">ثامناً: الجلسة القادمة وتفاصيل الرسوم المالية</h4>
                     <div className="border border-slate-200 rounded-lg overflow-hidden">
                       <table className="w-full text-right text-xs">
                         <tbody>

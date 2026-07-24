@@ -250,20 +250,6 @@ export default function LoginScreen({ users, onLoginSuccess, isInstalledApp = fa
   return (
     <div className="min-h-screen bg-[#0d121f] flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans select-none text-right" dir="rtl">
       
-      {/* Floating PWA Install Button on Login Screen */}
-      {!isInstalledApp && onInstallClick && (
-        <div className="absolute top-4 left-4 sm:top-6 sm:left-6 z-50 animate-fadeIn">
-          <button
-            onClick={onInstallClick}
-            className="bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 hover:border-amber-500/50 text-amber-400 hover:text-amber-300 font-extrabold text-[10px] sm:text-xs py-2 px-3 sm:px-4 rounded-xl flex items-center gap-1.5 md:gap-2 transition-all active:scale-95 duration-150 cursor-pointer shadow-lg shadow-amber-950/20"
-            title="تثبيت التطبيق على جهازك للوصول السريع والتشغيل كبرنامج مستقل"
-          >
-            <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500 animate-bounce" />
-            <span>تثبيت التطبيق</span>
-          </button>
-        </div>
-      )}
-
       {/* Premium background decorations */}
       <div className="absolute inset-0 pointer-events-none select-none z-0 overflow-hidden bg-gradient-to-b from-[#0b0e17] via-[#0f1524] to-[#0c0f1a]" />
       <div className="absolute top-[15%] left-[25%] w-[450px] h-[450px] bg-amber-500/[0.04] rounded-full blur-[110px] pointer-events-none" />
