@@ -1,0 +1,397 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+html {
+  scroll-behavior: smooth;
+}
+
+@theme {
+  --font-sans: "IBM Plex Sans Arabic", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+body {
+  font-family: var(--font-sans);
+  direction: rtl;
+  text-align: right;
+  background-color: #0d121f;
+  color: #1e293b;
+}
+
+/* Custom Scrollbar for premium feel */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: #0d121f;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293e;
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #F5B041;
+}
+
+/* Print Styling */
+@media print {
+  .no-print, nav, header, sidebar, .no-print-area {
+    display: none !important;
+  }
+  body, html {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 11pt;
+    direction: rtl !important;
+  }
+  @page {
+    size: A4 portrait;
+    margin: 12mm 10mm 15mm 10mm;
+  }
+  .print-container {
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    width: 100% !important;
+  }
+  .print-card {
+    border: 1px solid #cbd5e1 !important;
+    box-shadow: none !important;
+    border-radius: 8px !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+  th, td {
+    border: 1px solid #cbd5e1 !important;
+    padding: 6px 8px !important;
+    color: #000000 !important;
+  }
+  th {
+    background-color: #f1f5f9 !important;
+    font-weight: bold !important;
+  }
+}
+
+/* ==========================================================
+   GOLDEN GLASSMORPHISM AND LIGHT/ROYAL BLUE THEME OVERRIDES
+   ========================================================== */
+
+/* Elevate White Backgrounds to Royal Blue Glassmorphism & Elegant Bright Cards */
+main:not(.re-dark-panel) .bg-white,
+main:not(.re-dark-panel) [class*="bg-white"],
+main:not(.re-dark-panel) .bg-slate-50,
+main:not(.re-dark-panel) .bg-slate-50\/70,
+main:not(.re-dark-panel) .bg-slate-100,
+main:not(.re-dark-panel) .bg-slate-50\/40,
+main:not(.re-dark-panel) .bg-amber-50\/70,
+main:not(.re-dark-panel) .bg-red-50\/40 {
+  background-color: rgba(255, 255, 255, 0.98) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(15, 23, 42, 0.06) !important;
+  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.05),
+              0 8px 16px -6px rgba(15, 23, 42, 0.03),
+              inset 0 1px 0 0 rgba(255, 255, 255, 0.9) !important;
+  color: #0f172a !important;
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+/* Cards Hover Glow */
+main:not(.re-dark-panel) .bg-white:hover,
+main:not(.re-dark-panel) [class*="bg-white"]:hover {
+  background-color: #ffffff !important;
+  border-color: rgba(245, 176, 65, 0.35) !important;
+  box-shadow: 0 20px 35px -8px rgba(15, 23, 42, 0.1),
+              0 0 20px 0 rgba(245, 176, 65, 0.05),
+              inset 0 1px 0 0 rgba(255, 255, 255, 1) !important;
+  transform: translateY(-2px) !important;
+}
+
+/* Header & Text Override */
+main:not(.re-dark-panel) h1, main:not(.re-dark-panel) h2, main:not(.re-dark-panel) h3, main:not(.re-dark-panel) h4, main:not(.re-dark-panel) h5, main:not(.re-dark-panel) h6,
+main:not(.re-dark-panel) .text-slate-900,
+main:not(.re-dark-panel) .text-slate-800,
+main:not(.re-dark-panel) .text-slate-700,
+main:not(.re-dark-panel) .text-slate-600 {
+  color: #0f172a !important;
+  text-shadow: none !important;
+}
+
+main:not(.re-dark-panel) p,
+main:not(.re-dark-panel) .text-slate-500,
+main:not(.re-dark-panel) .text-slate-400 {
+  color: #475569 !important;
+}
+
+main:not(.re-dark-panel) .text-slate-300 {
+  color: #334155 !important;
+}
+
+/* Inputs, Textareas, Select elements */
+main:not(.re-dark-panel) input,
+main:not(.re-dark-panel) select,
+main:not(.re-dark-panel) textarea,
+main:not(.re-dark-panel) [class*="bg-slate-50"]:not(.rounded-full),
+main:not(.re-dark-panel) [class*="bg-slate-100"] {
+  background-color: #ffffff !important;
+  backdrop-filter: blur(8px) !important;
+  border: 1px solid rgba(15, 23, 42, 0.1) !important;
+  color: #0f172a !important;
+  border-radius: 12px !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.02) !important;
+  transition: all 0.2s ease !important;
+}
+
+main:not(.re-dark-panel) input:focus,
+main:not(.re-dark-panel) select:focus,
+main:not(.re-dark-panel) textarea:focus {
+  border-color: #F5B041 !important;
+  box-shadow: 0 0 0 3px rgba(245, 176, 65, 0.12),
+              inset 0 1px 2px rgba(0, 0, 0, 0.02) !important;
+  outline: none !important;
+}
+
+/* Tables, lists, and special cards */
+main:not(.re-dark-panel) table,
+main:not(.re-dark-panel) tr,
+main:not(.re-dark-panel) td,
+main:not(.re-dark-panel) th {
+  border-color: rgba(15, 23, 42, 0.06) !important;
+  color: #334155 !important;
+}
+
+main:not(.re-dark-panel) th {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+  font-weight: 600 !important;
+}
+
+main:not(.re-dark-panel) tr:hover td {
+  background-color: rgba(245, 176, 65, 0.02) !important;
+}
+
+/* Dropdown list option text fixing */
+main:not(.re-dark-panel) select option {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+/* Custom Buttons - Gold glow styled button */
+main:not(.re-dark-panel) .bg-amber-500,
+main:not(.re-dark-panel) [class*="bg-amber-500"] {
+  background: linear-gradient(135deg, #F5B041 0%, #E67E22 100%) !important;
+  color: #0d121f !important;
+  font-weight: 700 !important;
+  text-shadow: none !important;
+  box-shadow: 0 4px 12px rgba(245, 176, 65, 0.2) !important;
+  border: none !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+main:not(.re-dark-panel) .bg-amber-500:hover,
+main:not(.re-dark-panel) [class*="bg-amber-500"]:hover {
+  background: linear-gradient(135deg, #FAD7A0 0%, #F5B041 100%) !important;
+  box-shadow: 0 6px 16px rgba(245, 176, 65, 0.3) !important;
+  transform: translateY(-1px) !important;
+}
+
+main:not(.re-dark-panel) .bg-amber-500:active,
+main:not(.re-dark-panel) [class*="bg-amber-500"]:active {
+  transform: scale(0.97) !important;
+}
+
+/* Secondary Button Premium Hovering */
+main:not(.re-dark-panel) button:not(.bg-amber-500):not(.bg-red-500):not(.bg-emerald-500) {
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+main:not(.re-dark-panel) button:not(.bg-amber-500):not(.bg-red-500):not(.bg-emerald-500):hover {
+  border-color: rgba(245, 176, 65, 0.25) !important;
+  background-color: #f8fafc !important;
+}
+
+main:not(.re-dark-panel) button:not(.bg-amber-500):not(.bg-red-500):not(.bg-emerald-500):active {
+  transform: scale(0.97) !important;
+}
+
+/* Modal boxes glassmorphism and modern layout engine */
+:root {
+  --header-height: 74px;
+}
+
+@media (max-width: 768px) {
+  :root {
+    --header-height: 61px;
+  }
+}
+
+/* Match all overlay containers that are rendered as fixed overlays in the app when logged in */
+body:has(header) div[class*="fixed inset-0"][class*="z-50"]:not(.modal-backdrop),
+body:has(header) div[class*="fixed inset-0"][class*="z-[100]"]:not(.modal-backdrop),
+body:has(header) div[class*="fixed inset-0"][class*="bg-black"]:not(.modal-backdrop),
+body:has(header) div[class*="fixed inset-0"][class*="bg-slate-950"]:not(.modal-backdrop),
+body:has(header) div[class*="fixed inset-0"][class*="bg-[#0a1931]"]:not(.modal-backdrop) {
+  top: var(--header-height) !important;
+  height: calc(100vh - var(--header-height)) !important;
+  overflow-y: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  padding: 1.25rem 1rem !important;
+  z-index: 50 !important;
+  box-sizing: border-box !important;
+  background-color: rgba(13, 18, 31, 0.45) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Center modals vertically if screen is tall enough */
+@media (min-height: 600px) {
+  body:has(header) div[class*="fixed inset-0"][class*="z-50"]:not(.modal-backdrop),
+  body:has(header) div[class*="fixed inset-0"][class*="z-[100]"]:not(.modal-backdrop),
+  body:has(header) div[class*="fixed inset-0"][class*="bg-black"]:not(.modal-backdrop),
+  body:has(header) div[class*="fixed inset-0"][class*="bg-slate-950"]:not(.modal-backdrop),
+  body:has(header) div[class*="fixed inset-0"][class*="bg-[#0a1931]"]:not(.modal-backdrop) {
+    justify-content: center !important;
+  }
+}
+
+/* Custom alignment and max-height constraints for children inside those overlays to prevent overflow and ensure scrollability */
+body:has(header) div[class*="fixed inset-0"][class*="z-50"]:not(.modal-backdrop) > div:not([class*="fixed"]):not([class*="absolute"]),
+body:has(header) div[class*="fixed inset-0"][class*="z-[100]"]:not(.modal-backdrop) > div:not([class*="fixed"]):not([class*="absolute"]),
+body:has(header) div[class*="fixed inset-0"][class*="bg-black"]:not(.modal-backdrop) > div:not([class*="fixed"]):not([class*="absolute"]),
+body:has(header) div[class*="fixed inset-0"][class*="bg-slate-950"]:not(.modal-backdrop) > div:not([class*="fixed"]):not([class*="absolute"]),
+body:has(header) div[class*="fixed inset-0"][class*="bg-[#0a1931]"]:not(.modal-backdrop) > div:not([class*="fixed"]):not([class*="absolute"]) {
+  margin-top: auto !important;
+  margin-bottom: auto !important;
+  flex-shrink: 0 !important;
+  max-height: calc(100vh - var(--header-height) - 3rem) !important; /* Ensure comfortable spacing on top/bottom */
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  background-color: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+  box-shadow: 0 25px 60px -15px rgba(13, 18, 31, 0.15) !important;
+  color: #0f172a !important;
+}
+
+/* Specific styling for dark themed modals inside dashboard/cases views */
+body:has(header) div[class*="fixed inset-0"] > div[class*="bg-slate-900"],
+body:has(header) div[class*="fixed inset-0"] > div[class*="bg-[#0b1d36]"] {
+  background-color: #0f172a !important;
+  color: #f8fafc !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+body:has(header) div[class*="bg-slate-900/65"] {
+  background-color: rgba(13, 18, 31, 0.5) !important;
+  backdrop-filter: blur(12px) !important;
+}
+
+/* Ensure inner scrollable content within modals works seamlessly with native touch support */
+body:has(header) div[class*="fixed inset-0"] div[class*="overflow-y-auto"] {
+  scrollbar-width: thin !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+/* General clean scroll in panels */
+main {
+  scrollbar-width: thin;
+  scrollbar-color: #1e293e #0d121f;
+}
+
+/* ==========================================================
+   MOBILE & CROSS-BROWSER MODAL RENDERING BUG FIXES
+   ========================================================== */
+
+/* 
+   CRITICAL FIX: Completely disable backdrop-filter and -webkit-backdrop-filter on:
+   1. All fixed overlays and their descendants.
+   2. All backdrop-blur utility classes and their descendants.
+   3. All dialog elements, modal containers, and nested form/UI components.
+   Broad generic backdrop-filter rules (like main .bg-white or main input) were being 
+   applied to the modal container, child input fields, and inner elements, causing 
+   the entire modal body to blur out and render as a solid illegible smudge on mobile browsers.
+*/
+body:has(header) div[class*="fixed inset-0"],
+body:has(header) div[class*="fixed inset-0"] *,
+div[class*="fixed"],
+div[class*="fixed"] *,
+[class*="backdrop-blur"],
+[class*="backdrop-blur"] *,
+[role="dialog"],
+[role="dialog"] *,
+.base-modal-container,
+.base-modal-container *,
+main [class*="fixed"] *,
+main .base-modal-container * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Ensure the modal-backdrop inside BaseModal is fully customizable, opaque, and stacked underneath the modal content container */
+div.modal-backdrop,
+.modal-backdrop {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 10 !important; /* Underneath modal-content-container (z-20) */
+  background-color: rgba(9, 13, 24, 0.7) !important; /* Beautiful dark translucent background */
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  pointer-events: auto !important; /* Capture click events to close the modal */
+  display: block !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* Ensure modal content container sits on top of the backdrop, is clickable, and remains scrollable */
+div.modal-content-container,
+.modal-content-container {
+  z-index: 20 !important; /* Ensure it stays above backdrop (z-10) */
+  pointer-events: auto !important; /* Keep clickable and interactive */
+}
+
+/* ==========================================================
+   GLOBAL COMPACT SPACING FOR ALL ICONS AND LABELS
+   ========================================================== */
+
+/* Globally tighten spacing between icons (svg or emoji text) and their accompanying text labels */
+.flex:has(> svg):not(.gap-x-24),
+.flex:has(> div > svg):not(.gap-x-24),
+.flex.items-center:has(svg),
+.flex.items-center.gap-1,
+.flex.items-center.gap-1\.5,
+.flex.items-center.gap-2,
+.flex.items-center.gap-2\.5,
+.flex.items-center.gap-3,
+.flex.items-center.gap-3\.5 {
+  gap: 0.25rem !important; /* Elegant tighter spacing (4px) for all icon/label couplings */
+  column-gap: 0.25rem !important;
+}
+
+/* Maintain tighter configurations if explicitly small */
+.flex.gap-0\.5 {
+  gap: 0.1rem !important;
+  column-gap: 0.1rem !important;
+}
+.flex.gap-1 {
+  gap: 0.2rem !important;
+  column-gap: 0.2rem !important;
+}
+

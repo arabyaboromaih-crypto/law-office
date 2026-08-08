@@ -1,0 +1,330 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User account",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fullName": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "password": { "type": "string" },
+        "role": { "type": "string" },
+        "title": { "type": "string" },
+        "avatarUrl": { "type": "string" },
+        "status": { "type": "string" }
+      }
+    },
+    "Client": {
+      "title": "Client",
+      "description": "Individual client",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" }
+      }
+    },
+    "Company": {
+      "title": "Company",
+      "description": "Corporate client",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" }
+      }
+    },
+    "Opponent": {
+      "title": "Opponent",
+      "description": "Opponent party in lawsuit",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" }
+      }
+    },
+    "Case": {
+      "title": "Case",
+      "description": "Lawsuit case file",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "caseNumberFirstInstance": { "type": "string" }
+      }
+    },
+    "HearingSession": {
+      "title": "HearingSession",
+      "description": "Court hearing/session",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "caseId": { "type": "string" }
+      }
+    },
+    "LegalTask": {
+      "title": "LegalTask",
+      "description": "Assigned legal/procedural task",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" }
+      }
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "System audit log/report",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" }
+      }
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "System or task-related notification",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "text": { "type": "string" },
+        "type": { "type": "string" },
+        "date": { "type": "string" }
+      }
+    },
+    "OfficeSetting": {
+      "title": "OfficeSetting",
+      "description": "Centralized system and office settings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "officeName": { "type": "string" },
+        "officeSubtitle": { "type": "string" },
+        "officeAddress": { "type": "string" },
+        "officeWhatsapp": { "type": "string" },
+        "officeEmail": { "type": "string" },
+        "numberingSystem": { "type": "string" },
+        "tplSession": { "type": "string" },
+        "tplTask": { "type": "string" },
+        "generalDirectorName": { "type": "string" },
+        "generalDirectorTitle": { "type": "string" },
+        "generalDirectorPhone": { "type": "string" },
+        "generalDirectorEmail": { "type": "string" },
+        "isSystemUnlocked": { "type": "boolean" },
+        "isDirectorAssigned": { "type": "boolean" }
+      }
+    },
+    "ReOwner": {
+      "title": "ReOwner",
+      "description": "Real estate owner profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "commissionType": { "type": "string" },
+        "commissionValue": { "type": "number" },
+        "bankAccount": { "type": "string" },
+        "paymentMethod": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string" }
+      }
+    },
+    "ReProperty": {
+      "title": "ReProperty",
+      "description": "Property under management",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "name": { "type": "string" },
+        "address": { "type": "string" },
+        "floorsCount": { "type": "number" },
+        "unitsCount": { "type": "number" },
+        "status": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string" }
+      }
+    },
+    "ReUnit": {
+      "title": "ReUnit",
+      "description": "Rental unit of a property",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "propertyId": { "type": "string" },
+        "unitNumber": { "type": "string" },
+        "floor": { "type": "number" },
+        "activityType": { "type": "string" },
+        "rentValue": { "type": "number" },
+        "dueDay": { "type": "number" },
+        "status": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string" }
+      }
+    },
+    "ReTenant": {
+      "title": "ReTenant",
+      "description": "Tenant occupying a unit",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "unitId": { "type": "string" },
+        "fullName": { "type": "string" },
+        "phone": { "type": "string" },
+        "nationalId": { "type": "string" },
+        "contractStartDate": { "type": "string" },
+        "contractEndDate": { "type": "string" },
+        "rentAmount": { "type": "number" },
+        "status": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string" }
+      }
+    },
+    "ReCollectionReceipt": {
+      "title": "ReCollectionReceipt",
+      "description": "Rent collection transaction receipt",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "receiptNumber": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "unitId": { "type": "string" },
+        "propertyId": { "type": "string" },
+        "amountPaid": { "type": "number" },
+        "forMonthYear": { "type": "string" },
+        "paymentDate": { "type": "string" },
+        "paymentMethod": { "type": "string" },
+        "collectedBy": { "type": "string" },
+        "attachmentUrl": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string" }
+      }
+    },
+    "RePayout": {
+      "title": "RePayout",
+      "description": "Payout settlement to property owner",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "totalCollected": { "type": "number" },
+        "commissionDeducted": { "type": "number" },
+        "expensesDeducted": { "type": "number" },
+        "netAmountPaid": { "type": "number" },
+        "payoutDate": { "type": "string" },
+        "paymentMethod": { "type": "string" },
+        "bankTransactionRef": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "attachmentUrl": { "type": "string" },
+        "notes": { "type": "string" },
+        "status": { "type": "string" },
+        "signedByOwner": { "type": "boolean" },
+        "signatureDate": { "type": "string" },
+        "createdAt": { "type": "string" }
+      }
+    },
+    "RePropertyExpense": {
+      "title": "RePropertyExpense",
+      "description": "Expense logged for a property",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "propertyId": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "amount": { "type": "number" },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "expenseDate": { "type": "string" },
+        "attachmentUrl": { "type": "string" },
+        "recordedBy": { "type": "string" },
+        "createdAt": { "type": "string" }
+      }
+    },
+    "ReRealEstateLog": {
+      "title": "ReRealEstateLog",
+      "description": "Real estate auditing operation log",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "actionType": { "type": "string" },
+        "entityName": { "type": "string" },
+        "details": { "type": "string" },
+        "username": { "type": "string" },
+        "timestamp": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "users": {
+      "schema": "User",
+      "description": "User collection"
+    },
+    "clients": {
+      "schema": "Client",
+      "description": "Clients collection"
+    },
+    "companies": {
+      "schema": "Company",
+      "description": "Companies collection"
+    },
+    "opponents": {
+      "schema": "Opponent",
+      "description": "Opponents collection"
+    },
+    "cases": {
+      "schema": "Case",
+      "description": "Cases collection"
+    },
+    "sessions": {
+      "schema": "HearingSession",
+      "description": "Sessions collection"
+    },
+    "tasks": {
+      "schema": "LegalTask",
+      "description": "Tasks collection"
+    },
+    "auditLogs": {
+      "schema": "AuditLog",
+      "description": "AuditLogs/Reports collection"
+    },
+    "notifications": {
+      "schema": "Notification",
+      "description": "Notifications collection"
+    },
+    "settings": {
+      "schema": "OfficeSetting",
+      "description": "Centralized settings collection"
+    },
+    "re_owners": {
+      "schema": "ReOwner",
+      "description": "Real estate owners collection"
+    },
+    "re_properties": {
+      "schema": "ReProperty",
+      "description": "Properties collection"
+    },
+    "re_units": {
+      "schema": "ReUnit",
+      "description": "Rental units collection"
+    },
+    "re_tenants": {
+      "schema": "ReTenant",
+      "description": "Tenants collection"
+    },
+    "re_collections": {
+      "schema": "ReCollectionReceipt",
+      "description": "Rent collections collection"
+    },
+    "re_payouts": {
+      "schema": "RePayout",
+      "description": "Payouts to owners"
+    },
+    "re_expenses": {
+      "schema": "RePropertyExpense",
+      "description": "Property expenses collection"
+    },
+    "re_logs": {
+      "schema": "ReRealEstateLog",
+      "description": "Real estate audit log"
+    }
+  }
+}
