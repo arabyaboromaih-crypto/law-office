@@ -1,0 +1,60 @@
+# Dependencies & Builds
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment & Secrets
+.env*
+!.env.example
+
+# Local Data, Databases & Dumps
+*.local
+*.db
+*.sqlite
+*.sqlite3
+*.sql
+*.dump
+*.tar
+*.gz
+*.zip
+
+# Operational Backups & Exports
+backups/
+backup/
+*backup*
+*backup*.json
+*.bak
+*.backup
+*.bkp
+exports/
+export/
+*.export.json
+data/
+*.data.json
+
+# Local Uploads, Documents & Attachments
+uploads/
+attachments/
+storage/
+temp/
+tmp/
+*.pdf
+*.xlsx
+*.xls
+*.csv
+*.docx
+*.doc
+
+# Firebase & Cloud local debug/cache
+.firebase/
+firebase-debug.log*
+firestore-debug.log*
+.cache/
+.aistudio/
+

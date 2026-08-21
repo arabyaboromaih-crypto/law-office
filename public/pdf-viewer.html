@@ -1,0 +1,1230 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>عارض مستندات رميح الذكي</title>
+    
+    <!-- تحميل مكتبة PDF.js المحلية والآمنة لتجنب مشاكل CORS ومتطلبات الاتصال بالشبكة -->
+    <script id="pdfjs-main-script" src="/pdf.min.js"></script>
+
+    <style>
+        :root {
+            --chrome-bg: #f1f3f4; /* خلفية رمادية فاتحة مهنية */
+            --chrome-toolbar: #202124; /* شريط أدوات داكن مريح للتركيز */
+            --chrome-sidebar: #ffffff; /* شريط مصغرات أبيض نظيف */
+            --chrome-accent: #1a73e8; /* أزرق جوجل للتحديد والتركيز */
+            --text-primary: #ffffff; /* نص شريط الأدوات */
+            --text-dark: #3c4043; /* النص الغامق العادي */
+            --text-secondary: #5f6368; /* نص ثانوي رمادي */
+            --border-color: #dadce0; /* لون حدود فاتح */
+            --button-hover: rgba(255, 255, 255, 0.12); /* تمرير ماوس على الأزرار الداكنة */
+            --button-hover-dark: rgba(0, 0, 0, 0.05); /* تمرير ماوس على الأزرار الفاتحة */
+            --transition-speed: 0.2s;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--chrome-bg);
+            color: var(--text-dark);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* شريط الأدوات العلوي */
+        .toolbar {
+            background-color: var(--chrome-toolbar);
+            height: 56px;
+            padding: 0 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 100;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .toolbar-section {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .separator {
+            width: 1px;
+            height: 24px;
+            background-color: rgba(255, 255, 255, 0.15);
+            margin: 0 4px;
+        }
+
+        .document-title {
+            font-size: 14px;
+            font-weight: 500;
+            max-width: 200px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: var(--text-primary);
+        }
+
+        /* الأزرار */
+        .btn {
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            width: 36px;
+            height: 36px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background-color var(--transition-speed), color var(--transition-speed);
+        }
+
+        .btn:hover {
+            background-color: var(--button-hover);
+        }
+
+        .btn.active {
+            background-color: var(--chrome-accent);
+            color: white;
+        }
+
+        .btn svg {
+            width: 20px;
+            height: 20px;
+            fill: currentColor;
+        }
+
+        /* أدوات التنقل بين الصفحات */
+        .page-navigation {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--text-primary);
+            font-size: 13px;
+        }
+
+        .page-navigation input {
+            width: 45px;
+            height: 28px;
+            text-align: center;
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: bold;
+            outline: none;
+            -moz-appearance: textfield;
+        }
+
+        .page-navigation input::-webkit-outer-spin-button,
+        .page-navigation input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        /* أدوات التكبير */
+        .zoom-controls {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .zoom-select {
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 4px 8px;
+            font-size: 12px;
+            border-radius: 4px;
+            outline: none;
+            cursor: pointer;
+            height: 28px;
+        }
+
+        .zoom-select option {
+            background-color: #303134;
+            color: white;
+        }
+
+        /* مساحة العمل الرئيسية */
+        .workspace {
+            display: flex;
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* الشريط الجانبي للمصغرات */
+        .sidebar {
+            width: 200px;
+            background-color: var(--chrome-sidebar);
+            border-left: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            transition: width var(--transition-speed) ease, margin-left var(--transition-speed) ease;
+            overflow-y: auto;
+            z-index: 50;
+            flex-shrink: 0;
+        }
+
+        .sidebar.collapsed {
+            width: 0;
+            margin-left: -200px;
+            border-left: none;
+        }
+
+        .sidebar-header {
+            padding: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border-color);
+            text-align: center;
+            background-color: #f8f9fa;
+        }
+
+        .thumbnail-list {
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .thumbnail-item {
+            background: #ffffff;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            aspect-ratio: 1 / 1.414;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            cursor: pointer;
+            width: 120px;
+            transition: border-color var(--transition-speed), background-color var(--transition-speed);
+            overflow: hidden;
+            padding: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .thumbnail-item:hover {
+            background: #f1f3f4;
+            border-color: #9aa0a6;
+        }
+
+        .thumbnail-item.active {
+            border-color: var(--chrome-accent);
+            box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.2);
+        }
+
+        .thumbnail-item canvas {
+            max-width: 100%;
+            max-height: 100%;
+            display: block;
+        }
+
+        .thumbnail-number {
+            position: absolute;
+            bottom: 4px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(60, 64, 67, 0.12);
+            color: #3c4043;
+            padding: 2px 8px;
+            font-size: 10px;
+            border-radius: 10px;
+            font-weight: bold;
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        /* حاوية العارض */
+        .viewer-container {
+            flex: 1;
+            height: 100%;
+            overflow: auto;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: var(--chrome-bg);
+            gap: 24px;
+            scroll-behavior: smooth;
+        }
+
+        /* إطار صفحة الـ PDF */
+        .pdf-page-wrapper {
+            position: relative;
+            box-shadow: 0 1px 3px 0 rgba(60,64,67,0.3), 0 4px 8px 3px rgba(60,64,67,0.15);
+            background-color: white;
+            border-radius: 4px;
+            overflow: hidden;
+            width: fit-content;
+            max-width: 100%;
+            transition: transform 0.2s ease;
+        }
+
+        .pdf-page-canvas {
+            display: block;
+            max-width: 100%;
+            height: auto;
+        }
+
+        /* واجهة البحث */
+        .search-bar {
+            display: none;
+            background-color: #ffffff;
+            border-bottom: 1px solid var(--border-color);
+            padding: 8px 16px;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            z-index: 90;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .search-bar input {
+            padding: 6px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 13px;
+            width: 240px;
+            background: #f1f3f4;
+            color: #3c4043;
+            outline: none;
+        }
+
+        .search-bar input:focus {
+            border-color: var(--chrome-accent);
+            background: #ffffff;
+        }
+
+        .search-btn-nav {
+            color: #3c4043;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            width: 30px;
+            height: 30px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .search-btn-nav:hover {
+            background-color: #f1f3f4;
+        }
+
+        .search-btn-nav svg {
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+        }
+
+        /* واجهة الرسالة البديلة (Fallback UI) */
+        .fallback-container {
+            max-width: 480px;
+            padding: 32px;
+            text-align: center;
+            background-color: #ffffff;
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            margin: auto;
+        }
+
+        .fallback-icon {
+            width: 64px;
+            height: 64px;
+            color: #ea4335;
+            fill: currentColor;
+        }
+
+        .fallback-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: var(--text-dark);
+        }
+
+        .fallback-text {
+            font-size: 14px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        .btn-download-action {
+            background-color: var(--chrome-accent);
+            color: #ffffff;
+            border: none;
+            padding: 12px 24px;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+            transition: background-color var(--transition-speed);
+        }
+
+        .btn-download-action:hover {
+            background-color: #1557b0;
+        }
+
+        @media print {
+            body {
+                background-color: white !important;
+                color: black !important;
+                overflow: visible !important;
+                height: auto !important;
+            }
+            .toolbar, .sidebar, .search-bar {
+                display: none !important;
+            }
+            .workspace {
+                display: block !important;
+                overflow: visible !important;
+                height: auto !important;
+            }
+            .viewer-container {
+                display: block !important;
+                overflow: visible !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                background-color: white !important;
+            }
+            .pdf-page-wrapper {
+                box-shadow: none !important;
+                border-radius: 0 !important;
+                page-break-after: always !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+                height: auto !important;
+            }
+            .pdf-page-canvas {
+                width: 100% !important;
+                height: auto !important;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- شريط الأدوات العلوي -->
+    <header class="toolbar">
+        <div class="toolbar-section">
+            <!-- زر تبديل الشريط الجانبي للمصغرات -->
+            <button class="btn" id="toggle-sidebar" title="تبديل الشريط الجانبي (الأوراق المصغرة)">
+                <svg viewBox="0 0 24 24">
+                    <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/>
+                    <path d="M7 7h5v10H7z"/>
+                </svg>
+            </button>
+            <h1 class="document-title" id="doc-title">جاري تحميل المستند...</h1>
+        </div>
+
+        <div class="toolbar-section">
+            <!-- التنقل بين الصفحات -->
+            <div class="page-navigation">
+                <button class="btn" id="prev-page" title="الصفحة السابقة">
+                    <svg viewBox="0 0 24 24"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+                </button>
+                <input type="number" id="page-num" value="1" min="1">
+                <span>/</span>
+                <span id="page-count" style="font-weight: bold; min-width: 15px;">-</span>
+                <button class="btn" id="next-page" title="الصفحة التالية">
+                    <svg viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+                </button>
+            </div>
+
+            <div class="separator"></div>
+
+            <!-- التحكم بالزوم -->
+            <div class="zoom-controls">
+                <button class="btn" id="zoom-out" title="تصغير">
+                    <svg viewBox="0 0 24 24"><path d="M19 13H5v-2h14v2z"/></svg>
+                </button>
+                <select id="zoom-select" class="zoom-select">
+                    <option value="0.5">50%</option>
+                    <option value="0.75">75%</option>
+                    <option value="1.0" selected>100%</option>
+                    <option value="1.25">125%</option>
+                    <option value="1.5">150%</option>
+                    <option value="2.0">200%</option>
+                    <option value="page-fit">ملائمة الصفحة</option>
+                    <option value="page-width">عرض الصفحة</option>
+                </select>
+                <button class="btn" id="zoom-in" title="تكبير">
+                    <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+                </button>
+            </div>
+
+            <div class="separator"></div>
+
+            <!-- تدوير الصفحة -->
+            <button class="btn" id="rotate-btn" title="تدوير الصفحة 90 درجة">
+                <svg viewBox="0 0 24 24">
+                    <path d="M15.55 5.55L11 1v4.07C7.06 5.56 4 8.93 4 13c0 4.42 3.58 8 8 8s8-3.58 8-8c0-2.14-.84-4.08-2.22-5.55l-1.42 1.42C17.38 10.09 18 11.48 18 13c0 3.31-2.69 6-6 6s-6-2.69-6-6c0-2.76 1.88-5.08 4.41-5.74V11l4.59-4.59z"/>
+                </svg>
+            </button>
+
+            <!-- البحث داخل الملف -->
+            <button class="btn" id="search-toggle" title="البحث داخل المستند">
+                <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+            </button>
+        </div>
+
+        <div class="toolbar-section">
+            <!-- طباعة المستند -->
+            <button class="btn" id="print-btn" title="طباعة المستند">
+                <svg viewBox="0 0 24 24"><path d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/></svg>
+            </button>
+            <!-- تنزيل الملف -->
+            <a href="#" class="btn" id="download-btn" title="تنزيل الملف المفتوح" download>
+                <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
+            </a>
+            <!-- ملء الشاشة -->
+            <button class="btn" id="fullscreen-btn" title="شاشة كاملة">
+                <svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- شريط البحث المنزلق للأسفل -->
+    <div class="search-bar" id="search-bar">
+        <input type="text" id="search-input" placeholder="اكتب للبحث داخل المستند...">
+        <button class="search-btn-nav" id="search-prev" title="النتيجة السابقة">
+            <svg viewBox="0 0 24 24"><path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"/></svg>
+        </button>
+        <button class="search-btn-nav" id="search-next" title="النتيجة التالية">
+            <svg viewBox="0 0 24 24"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
+        </button>
+        <span id="search-status">لا توجد نتائج</span>
+        <button class="search-btn-nav" id="search-close" title="إغلاق البحث" style="color: #ea4335; border: none;">
+            <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+    </div>
+
+    <!-- مساحة العمل الرئيسية -->
+    <main class="workspace">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">صفحات المستند</div>
+            <div class="thumbnail-list" id="thumbnail-list"></div>
+        </aside>
+
+        <div class="viewer-container" id="viewer-container"></div>
+    </main>
+
+    <script>
+        // تعريف المتغيرات والعناصر الرئيسية في الصفحة
+        const docTitle = document.getElementById('doc-title');
+        const toggleSidebarBtn = document.getElementById('toggle-sidebar');
+        const sidebar = document.getElementById('sidebar');
+        const thumbnailList = document.getElementById('thumbnail-list');
+        const viewerContainer = document.getElementById('viewer-container');
+        
+        const prevPageBtn = document.getElementById('prev-page');
+        const nextPageBtn = document.getElementById('next-page');
+        const pageNumInput = document.getElementById('page-num');
+        const pageCountSpan = document.getElementById('page-count');
+        
+        const zoomOutBtn = document.getElementById('zoom-out');
+        const zoomInBtn = document.getElementById('zoom-in');
+        const zoomSelect = document.getElementById('zoom-select');
+        
+        const rotateBtn = document.getElementById('rotate-btn');
+        const searchToggleBtn = document.getElementById('search-toggle');
+        const printBtn = document.getElementById('print-btn');
+        const downloadBtn = document.getElementById('download-btn');
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+        
+        const searchBar = document.getElementById('search-bar');
+        const searchInput = document.getElementById('search-input');
+        const searchPrevBtn = document.getElementById('search-prev');
+        const searchNextBtn = document.getElementById('search-next');
+        const searchStatusSpan = document.getElementById('search-status');
+        const searchCloseBtn = document.getElementById('search-close');
+
+        // حالة عارض المستند
+        let pdfDoc = null;
+        let currentPage = 1;
+        let currentZoom = 1.0;
+        let currentRotation = 0;
+        let isImage = false;
+        
+        let pageCanvases = [];
+        let thumbnailCanvases = [];
+        let renderQueue = [];
+        let isRendering = false;
+        
+        const minZoom = 0.5;
+        const maxZoom = 3.0;
+        const zoomStep = 0.15;
+
+        // حالة البحث
+        let searchMatches = [];
+        let currentSearchIndex = -1;
+        let pageTextCache = {};
+
+        // جلب البارامترات من الرابط
+        const urlParams = new URLSearchParams(window.location.search);
+        const pdfFileUrl = urlParams.get('file') || '/sample.pdf'; 
+        const pdfFileName = urlParams.get('title') || 'مستند قضية نموذجية.pdf';
+        const pdfFileId = urlParams.get('fileId') || '';
+
+        docTitle.innerText = pdfFileName;
+        downloadBtn.href = pdfFileUrl;
+
+        // تهيئة العارض تلقائياً عند تحميل الصفحة
+        window.addEventListener('DOMContentLoaded', () => {
+            initViewer();
+        });
+
+        function checkIsImage(url) {
+            const cleanUrl = url.split('?')[0].split('#')[0].toLowerCase();
+            return cleanUrl.endsWith('.png') || 
+                   cleanUrl.endsWith('.jpg') || 
+                   cleanUrl.endsWith('.jpeg') || 
+                   cleanUrl.endsWith('.gif') || 
+                   cleanUrl.endsWith('.webp') || 
+                   cleanUrl.endsWith('.svg') ||
+                   url.startsWith('data:image/');
+        }
+
+        // جلب الملف المخزن من IndexedDB للـ Blobs المحلية
+        async function getPdfBlob(url, title, fileId) {
+            let attempts = 0;
+            const maxAttempts = 15;
+            
+            while (attempts < maxAttempts) {
+                if (window.parent && window.parent.activePdfBlobs) {
+                    const originalBlob = window.parent.activePdfBlobs[url];
+                    if (originalBlob) return originalBlob;
+                }
+                if (window.opener && window.opener.activePdfBlobs) {
+                    const originalBlob = window.opener.activePdfBlobs[url];
+                    if (originalBlob) return originalBlob;
+                }
+
+                try {
+                    const blob = await new Promise((resolve, reject) => {
+                        const dbRequest = indexedDB.open('PdfViewerDBV2', 1);
+                        dbRequest.onupgradeneeded = (e) => {
+                            const db = e.target.result;
+                            if (!db.objectStoreNames.contains('pdfBlobs')) {
+                                db.createObjectStore('pdfBlobs');
+                            }
+                        };
+                        dbRequest.onsuccess = (e) => {
+                            const db = e.target.result;
+                            try {
+                                const tx = db.transaction('pdfBlobs', 'readonly');
+                                const store = tx.objectStore('pdfBlobs');
+                                
+                                if (fileId) {
+                                    const getIdReq = store.get(fileId);
+                                    getIdReq.onsuccess = () => {
+                                        if (getIdReq.result) { resolve(getIdReq.result); return; }
+                                        tryGetByUrl();
+                                    };
+                                    getIdReq.onerror = () => tryGetByUrl();
+                                } else {
+                                    tryGetByUrl();
+                                }
+
+                                function tryGetByUrl() {
+                                    const getReq = store.get(url);
+                                    getReq.onsuccess = () => {
+                                        if (getReq.result) {
+                                            resolve(getReq.result);
+                                        } else {
+                                            const getAllReq = store.getAll();
+                                            getAllReq.onsuccess = () => {
+                                                const records = getAllReq.result || [];
+                                                const matched = records.find(r => 
+                                                    r && r.name && title && (
+                                                        r.name === title || 
+                                                        r.name.includes(title) || 
+                                                        title.includes(r.name)
+                                                    )
+                                                );
+                                                resolve(matched || null);
+                                            };
+                                            getAllReq.onerror = () => resolve(null);
+                                        }
+                                    };
+                                    getReq.onerror = () => reject(getReq.error);
+                                }
+                            } catch (err) { reject(err); }
+                        };
+                        dbRequest.onerror = () => reject(dbRequest.error);
+                    });
+                    
+                    if (blob) return blob;
+                } catch (err) {
+                    console.warn('IndexedDB retrieval attempt failed:', err);
+                }
+
+                attempts++;
+                await new Promise(r => setTimeout(r, 100));
+            }
+            return null;
+        }
+
+        function loadScript(src) {
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = src;
+                script.onload = () => resolve();
+                script.onerror = () => reject(new Error('Failed to load script: ' + src));
+                document.head.appendChild(script);
+            });
+        }
+
+        // تهيئة مكتبة PDF.js وعرض المستند
+        async function initViewer() {
+            viewerContainer.innerHTML = `
+                <div id="loading-spinner" style="display: flex; flex-direction: column; align-items: center; gap: 16px; margin: auto; text-align: center;">
+                    <div style="width: 40px; height: 40px; border: 4px solid rgba(0,0,0,0.1); border-top-color: var(--chrome-accent); border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                    <p style="font-size: 14px; color: var(--text-secondary); font-weight: 500;">جاري تحميل المستند بأمان...</p>
+                </div>
+                <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+            `;
+
+            let finalPdfUrl = pdfFileUrl;
+
+            if (pdfFileId || pdfFileUrl.startsWith('blob:')) {
+                const blob = await getPdfBlob(pdfFileUrl, pdfFileName, pdfFileId);
+                if (blob) {
+                    try {
+                        finalPdfUrl = URL.createObjectURL(blob);
+                        downloadBtn.href = finalPdfUrl;
+                    } catch (e) {
+                        console.error('Blob URL creation failed:', e);
+                    }
+                }
+            }
+
+            if (checkIsImage(finalPdfUrl)) {
+                isImage = true;
+                renderImage(finalPdfUrl);
+                return;
+            }
+
+            if (typeof pdfjsLib === 'undefined') {
+                try {
+                    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js');
+                } catch (err) {
+                    showFallbackUI(err);
+                    return;
+                }
+            }
+
+            let workerUrl = window.location.origin + '/pdf.worker.min.js';
+            const mainScript = document.getElementById('pdfjs-main-script');
+            const isLoadedLocal = mainScript && mainScript.src && mainScript.src.includes(window.location.origin);
+            if (typeof pdfjsLib !== 'undefined' && !isLoadedLocal) {
+                workerUrl = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+            }
+            pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+
+            const loadingTask = pdfjsLib.getDocument({
+                url: finalPdfUrl,
+                cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/cmaps/',
+                cMapPacked: true
+            });
+
+            loadingTask.promise.then(function(pdf) {
+                pdfDoc = pdf;
+                viewerContainer.innerHTML = '';
+                thumbnailList.innerHTML = '';
+                pageCountSpan.innerText = pdfDoc.numPages;
+                pageNumInput.max = pdfDoc.numPages;
+
+                renderAllPages();
+                setupIntersectionObserver();
+                cacheAllPageText();
+            }).catch(function(error) {
+                console.error('PDF parsing error:', error);
+                tryImageFallback(finalPdfUrl, error);
+            });
+        }
+
+        // رندرة صورة بديلة في العارض
+        function renderImage(imgUrl) {
+            viewerContainer.innerHTML = '';
+            sidebar.classList.add('collapsed');
+            if (toggleSidebarBtn) toggleSidebarBtn.style.display = 'none';
+
+            const imgWrapper = document.createElement('div');
+            imgWrapper.className = 'pdf-page-wrapper';
+            imgWrapper.style.backgroundColor = 'transparent';
+            imgWrapper.style.boxShadow = 'none';
+            imgWrapper.style.display = 'flex';
+            imgWrapper.style.justifyContent = 'center';
+            imgWrapper.style.padding = '0';
+            imgWrapper.style.maxWidth = '100%';
+
+            const img = document.createElement('img');
+            img.id = 'viewer-image';
+            img.src = imgUrl;
+            img.style.maxWidth = '100%';
+            img.style.height = 'auto';
+            img.style.borderRadius = '4px';
+            img.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.15)';
+            img.style.transition = 'width 0.2s ease';
+            img.referrerPolicy = 'no-referrer';
+
+            imgWrapper.appendChild(img);
+            viewerContainer.appendChild(imgWrapper);
+        }
+
+        function tryImageFallback(imgUrl, originalError) {
+            isImage = true;
+            renderImage(imgUrl);
+            const img = document.getElementById('viewer-image');
+            if (img) {
+                img.onerror = function() {
+                    isImage = false;
+                    if (toggleSidebarBtn) toggleSidebarBtn.style.display = 'flex';
+                    sidebar.classList.remove('collapsed');
+                    showFallbackUI(originalError);
+                };
+            }
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text.toString().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        function showFallbackUI(error) {
+            const errorDetails = error 
+                ? `<div style="margin: 10px auto; padding: 10px; background: rgba(220, 38, 38, 0.05); border: 1px solid rgba(220, 38, 38, 0.1); border-radius: 6px; font-family: monospace; font-size: 11px; color: #dc2626; text-align: left; direction: ltr; max-width: 100%; overflow-x: auto; white-space: pre-wrap;">[Diagnostic Error]:\n${escapeHtml(error.toString())}</div>`
+                : '';
+
+            viewerContainer.innerHTML = `
+                <div class="fallback-container">
+                    <svg class="fallback-icon" viewBox="0 0 24 24">
+                        <path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm5 6H11v-1.5c0-.83.67-1.5 1.5-1.5h2c.83 0 1.5.67 1.5 1.5V15.5zm1-5H16V9h1.5v1.5zM6 6H4v14c0 1.1.9 2 2 2h14v-2H6V6z"/>
+                    </svg>
+                    <h3 class="fallback-title">تعذر فتح هذا الملف مباشرة</h3>
+                    <p class="fallback-text">
+                        تعذر على محرك العرض قراءة الملف داخل المتصفح. لا تقلق، يمكنك تنزيل المستند مباشرة لفتحه بأي تطبيق مخصص على جهازك.
+                    </p>
+                    ${errorDetails}
+                    <a href="${pdfFileUrl}" class="btn-download-action" download="${pdfFileName}">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        <span>تنزيل الملف المفتوح الآن</span>
+                    </a>
+                </div>
+            `;
+        }
+
+        // إنشاء صفحات الـ PDF والمصغرات
+        function renderAllPages() {
+            for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+                const pageWrapper = document.createElement('div');
+                pageWrapper.className = 'pdf-page-wrapper';
+                pageWrapper.id = `page-wrapper-${pageNum}`;
+                
+                const canvas = document.createElement('canvas');
+                canvas.className = 'pdf-page-canvas';
+                pageWrapper.appendChild(canvas);
+                viewerContainer.appendChild(pageWrapper);
+                
+                pageCanvases.push({ pageNum, canvas, wrapper: pageWrapper });
+
+                const thumbnailItem = document.createElement('div');
+                thumbnailItem.className = `thumbnail-item ${pageNum === 1 ? 'active' : ''}`;
+                thumbnailItem.id = `thumb-item-${pageNum}`;
+                thumbnailItem.setAttribute('data-page', pageNum);
+                
+                const thumbCanvas = document.createElement('canvas');
+                const thumbNumber = document.createElement('span');
+                thumbNumber.className = 'thumbnail-number';
+                thumbNumber.innerText = pageNum;
+                
+                thumbnailItem.appendChild(thumbCanvas);
+                thumbnailItem.appendChild(thumbNumber);
+                thumbnailList.appendChild(thumbnailItem);
+                
+                thumbnailCanvases.push({ pageNum, canvas: thumbCanvas, item: thumbnailItem });
+
+                thumbnailItem.addEventListener('click', () => {
+                    document.querySelectorAll('.thumbnail-item').forEach(t => t.classList.remove('active'));
+                    thumbnailItem.classList.add('active');
+                    pageWrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
+
+                queueRenderPage(pageNum);
+            }
+        }
+
+        function queueRenderPage(pageNum) {
+            renderQueue.push(pageNum);
+            processQueue();
+        }
+
+        function processQueue() {
+            if (isRendering || renderQueue.length === 0) return;
+            isRendering = true;
+            const pageNum = renderQueue.shift();
+            renderPage(pageNum, () => {
+                isRendering = false;
+                processQueue();
+            });
+        }
+
+        // رندرة صفحة مفردة
+        function renderPage(pageNum, callback) {
+            pdfDoc.getPage(pageNum).then(function(page) {
+                const mainTarget = pageCanvases.find(p => p.pageNum === pageNum);
+                if (mainTarget) {
+                    const canvas = mainTarget.canvas;
+                    const pageWrapper = mainTarget.wrapper;
+                    const context = canvas.getContext('2d');
+                    
+                    const displayViewport = page.getViewport({ scale: currentZoom, rotation: currentRotation });
+                    const renderViewport = page.getViewport({ scale: currentZoom * 1.5, rotation: currentRotation });
+                    
+                    pageWrapper.style.width = displayViewport.width + 'px';
+                    pageWrapper.style.height = displayViewport.height + 'px';
+                    
+                    canvas.height = renderViewport.height;
+                    canvas.width = renderViewport.width;
+                    canvas.style.width = '100%';
+                    canvas.style.height = '100%';
+
+                    const renderContext = {
+                        canvasContext: context,
+                        viewport: renderViewport
+                    };
+                    
+                    if (mainTarget.renderTask) {
+                        mainTarget.renderTask.cancel();
+                    }
+                    
+                    mainTarget.renderTask = page.render(renderContext);
+                    mainTarget.renderTask.promise.then(() => {
+                        mainTarget.renderTask = null;
+                        
+                        const thumbTarget = thumbnailCanvases.find(t => t.pageNum === pageNum);
+                        if (thumbTarget) {
+                            const thumbCanvas = thumbTarget.canvas;
+                            const thumbContext = thumbCanvas.getContext('2d');
+                            const thumbViewport = page.getViewport({ scale: 0.15, rotation: currentRotation });
+                            
+                            thumbCanvas.height = thumbViewport.height;
+                            thumbCanvas.width = thumbViewport.width;
+                            thumbCanvas.style.width = '100%';
+                            thumbCanvas.style.height = '100%';
+
+                            const thumbRenderContext = {
+                                canvasContext: thumbContext,
+                                viewport: thumbViewport
+                            };
+                            
+                            if (thumbTarget.renderTask) {
+                                thumbTarget.renderTask.cancel();
+                            }
+                            
+                            thumbTarget.renderTask = page.render(thumbRenderContext);
+                            thumbTarget.renderTask.promise.then(() => {
+                                thumbTarget.renderTask = null;
+                                if (callback) callback();
+                            }).catch(() => {
+                                thumbTarget.renderTask = null;
+                                if (callback) callback();
+                            });
+                        } else {
+                            if (callback) callback();
+                        }
+                    }).catch((err) => {
+                        mainTarget.renderTask = null;
+                        if (err.name !== 'RenderingCancelledException') {
+                            console.error('Render error page:', pageNum, err);
+                        }
+                        if (callback) callback();
+                    });
+                } else {
+                    if (callback) callback();
+                }
+            }).catch(() => {
+                if (callback) callback();
+            });
+        }
+
+        // تحديث الزوم
+        function updateZoom(newZoom) {
+            currentZoom = newZoom;
+            if (isImage) {
+                const img = document.getElementById('viewer-image');
+                if (img) {
+                    img.style.width = `${currentZoom * 100}%`;
+                }
+                return;
+            }
+
+            renderQueue = [];
+            for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+                queueRenderPage(pageNum);
+            }
+        }
+
+        async function fitPage(fitType) {
+            if (!pdfDoc || isImage) return;
+            try {
+                const page = await pdfDoc.getPage(currentPage);
+                const viewport = page.getViewport({ scale: 1.0, rotation: currentRotation });
+                const containerWidth = viewerContainer.clientWidth - 48;
+                const containerHeight = viewerContainer.clientHeight - 48;
+                
+                let scale = 1.0;
+                if (fitType === 'page-fit') {
+                    scale = containerHeight / viewport.height;
+                } else if (fitType === 'page-width') {
+                    scale = containerWidth / viewport.width;
+                }
+                
+                scale = Math.max(minZoom, Math.min(scale, maxZoom));
+                updateZoom(scale);
+            } catch (e) {
+                console.error('Fit page calculation failed:', e);
+            }
+        }
+
+        // أزرار الزوم والتكبير والتصغير
+        zoomInBtn.addEventListener('click', () => {
+            const nextZoom = Math.min(currentZoom + zoomStep, maxZoom);
+            zoomSelect.value = nextZoom.toFixed(2);
+            updateZoom(nextZoom);
+        });
+
+        zoomOutBtn.addEventListener('click', () => {
+            const nextZoom = Math.max(currentZoom - zoomStep, minZoom);
+            zoomSelect.value = nextZoom.toFixed(2);
+            updateZoom(nextZoom);
+        });
+
+        zoomSelect.addEventListener('change', (e) => {
+            const val = e.target.value;
+            if (val === 'page-fit' || val === 'page-width') {
+                fitPage(val);
+            } else {
+                updateZoom(parseFloat(val));
+            }
+        });
+
+        // تدوير الصفحة
+        rotateBtn.addEventListener('click', () => {
+            currentRotation = (currentRotation + 90) % 360;
+            renderQueue = [];
+            for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+                queueRenderPage(pageNum);
+            }
+        });
+
+        // شاشة كاملة
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.error('Fullscreen error:', err);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // التنقل بين الصفحات بالأزرار والمدخلات
+        prevPageBtn.addEventListener('click', () => {
+            if (currentPage > 1) {
+                const targetPage = currentPage - 1;
+                const wrapper = document.getElementById(`page-wrapper-${targetPage}`);
+                if (wrapper) wrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        });
+
+        nextPageBtn.addEventListener('click', () => {
+            if (currentPage < pdfDoc.numPages) {
+                const targetPage = currentPage + 1;
+                const wrapper = document.getElementById(`page-wrapper-${targetPage}`);
+                if (wrapper) wrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        });
+
+        pageNumInput.addEventListener('change', (e) => {
+            const val = parseInt(e.target.value);
+            if (val >= 1 && val <= pdfDoc.numPages) {
+                const wrapper = document.getElementById(`page-wrapper-${val}`);
+                if (wrapper) wrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } else {
+                e.target.value = currentPage;
+            }
+        });
+
+        toggleSidebarBtn.addEventListener('click', () => {
+            sidebar.classList.toggle('collapsed');
+        });
+
+        printBtn.addEventListener('click', () => {
+            window.print();
+        });
+
+        // تفعيل IntersectionObserver لمراقبة التمرير ومزامنة الصفحة الحالية
+        function setupIntersectionObserver() {
+            const observerOptions = {
+                root: viewerContainer,
+                threshold: 0.35
+            };
+
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const pageId = entry.target.id;
+                        const pageNum = parseInt(pageId.split('-').pop());
+                        currentPage = pageNum;
+                        pageNumInput.value = pageNum;
+
+                        document.querySelectorAll('.thumbnail-item').forEach(t => t.classList.remove('active'));
+                        const activeThumb = document.getElementById(`thumb-item-${pageNum}`);
+                        if (activeThumb) {
+                            activeThumb.classList.add('active');
+                            activeThumb.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                        }
+                    }
+                });
+            }, observerOptions);
+
+            pageCanvases.forEach(item => {
+                observer.observe(item.wrapper);
+            });
+        }
+
+        // جلب النصوص للبحث
+        async function cacheAllPageText() {
+            if (!pdfDoc) return;
+            for (let i = 1; i <= pdfDoc.numPages; i++) {
+                try {
+                    const page = await pdfDoc.getPage(i);
+                    const textContent = await page.getTextContent();
+                    const text = textContent.items.map(item => item.str).join(' ');
+                    pageTextCache[i] = text;
+                } catch (e) {
+                    console.error(`Error caching text on page ${i}:`, e);
+                }
+            }
+        }
+
+        // محرك البحث الداخلي والآمن
+        searchToggleBtn.addEventListener('click', () => {
+            if (searchBar.style.display === 'flex') {
+                searchBar.style.display = 'none';
+                searchToggleBtn.classList.remove('active');
+            } else {
+                searchBar.style.display = 'flex';
+                searchToggleBtn.classList.add('active');
+                searchInput.focus();
+            }
+        });
+
+        searchCloseBtn.addEventListener('click', () => {
+            searchBar.style.display = 'none';
+            searchToggleBtn.classList.remove('active');
+            clearSearchHighlight();
+        });
+
+        searchInput.addEventListener('input', () => {
+            performSearch(searchInput.value);
+        });
+
+        searchPrevBtn.addEventListener('click', () => {
+            if (searchMatches.length > 0) {
+                let prevIdx = currentSearchIndex - 1;
+                if (prevIdx < 0) prevIdx = searchMatches.length - 1;
+                navigateToMatch(prevIdx);
+            }
+        });
+
+        searchNextBtn.addEventListener('click', () => {
+            if (searchMatches.length > 0) {
+                let nextIdx = currentSearchIndex + 1;
+                if (nextIdx >= searchMatches.length) nextIdx = 0;
+                navigateToMatch(nextIdx);
+            }
+        });
+
+        function performSearch(query) {
+            searchMatches = [];
+            currentSearchIndex = -1;
+            clearSearchHighlight();
+
+            if (!query) {
+                searchStatusSpan.innerText = 'لا توجد نتائج';
+                return;
+            }
+
+            const lowerQuery = query.toLowerCase().trim();
+            for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+                const text = pageTextCache[pageNum] || '';
+                let idx = text.toLowerCase().indexOf(lowerQuery);
+                while (idx !== -1) {
+                    searchMatches.push({ pageNum, index: idx });
+                    idx = text.toLowerCase().indexOf(lowerQuery, idx + 1);
+                }
+            }
+
+            if (searchMatches.length > 0) {
+                currentSearchIndex = 0;
+                navigateToMatch(0);
+            } else {
+                searchStatusSpan.innerText = 'لا توجد نتائج';
+            }
+        }
+
+        function navigateToMatch(index) {
+            if (index < 0 || index >= searchMatches.length) return;
+            currentSearchIndex = index;
+            const match = searchMatches[index];
+            
+            searchStatusSpan.innerText = `${currentSearchIndex + 1} من ${searchMatches.length}`;
+
+            const pageWrapper = document.getElementById(`page-wrapper-${match.pageNum}`);
+            if (pageWrapper) {
+                pageWrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                
+                clearSearchHighlight();
+                pageWrapper.style.outline = '4px solid #f2a900';
+                pageWrapper.style.outlineOffset = '2px';
+            }
+        }
+
+        function clearSearchHighlight() {
+            pageCanvases.forEach(item => {
+                item.wrapper.style.outline = 'none';
+            });
+        }
+    </script>
+</body>
+</html>
