@@ -14,7 +14,9 @@ import {
   Coins, Edit2, X, Trash2, ArrowUpDown, Phone, Home, User as UserIcon, XCircle, ArrowRight, Sparkles, RotateCcw,
   Banknote, Calculator
 } from 'lucide-react';
-import { addFirestoreDoc, updateFirestoreDoc, deleteFirestoreDoc, executeRevertRentCollectionBatch, RevertBatchItem } from '../../services/dbSync';
+import { addFirestoreDoc, updateFirestoreDoc, deleteFirestoreDoc, executeRevertRentCollectionBatch, RevertBatchItem, saveCommissionStatusDoc } from '../../services/dbSync';
+import CommissionCollectModal, { CommissionStatementItem, CommissionPropertySummaryGroup } from './CommissionCollectModal';
+import PropertyCommissionDetailsModal from './PropertyCommissionDetailsModal';
 import { motion, AnimatePresence } from 'motion/react';
 import { useBackHandler } from '../../utils/navigationManager';
 import { 
@@ -28,6 +30,7 @@ import TenantCollectionReceiptsModal from './TenantCollectionReceiptsModal';
 import { PropertyPayoutReceiptsModal } from './PropertyPayoutReceiptsModal';
 import { AdvanceDeductionModal, getDeductionMethodBadge, handlePrintAdvanceVoucher } from './AdvanceDeductionModal';
 import { AdvanceDeductionReceiptsModal } from './AdvanceDeductionReceiptsModal';
+import RevertCollectionModal from './RevertCollectionModal';
 
 const AR_MONTHS = [
   { value: 'all', label: 'جميع الشهور' },
@@ -879,6 +882,12 @@ export default function RealEstateFinancials({
     return 'all';
   }, [commSelectedYear, commSelectedMonth]);
 
+  const [collectCommModalData, setCollectCommModalData] = useState<{
+    statement?: CommissionStatementItem | null;
+    group?: CommissionPropertySummaryGroup | null;
+  } | null>(null);
+  const [selectedDetailsGroup, setSelectedDetailsGroup] = useState<CommissionPropertySummaryGroup | null>(null);
+
   const [editingCommRecord, setEditingCommRecord] = useState<{
     id: string;
     propertyId: string;
@@ -1299,6 +1308,136 @@ export default function RealEstateFinancials({
     set.add(currentYearStr);
     return Array.from(set).sort().reverse();
   }, [validDues]);
+
+  const handleOpenCollectCommission = (statement?: CommissionStatementItem, group?: CommissionPropertySummaryGroup) => {
+    setCollectCommModalData({ statement: statement || null, group: group || null });
+  };
+
+  const handleOpenCommissionDetails = (group: CommissionPropertySummaryGroup) => {
+    setSelectedDetailsGroup(group);
+  };
+
+  const handleSaveCommissionCollectionBatch = async (records: ReCommissionStatus[]) => {
+    setIsSavingCommStatus(true);
+    try {
+      for (const rec of records) {
+        if (onSaveCommissionStatus) {
+          await onSaveCommissionStatus(rec);
+        } else {
+          await saveCommissionStatusDoc(rec);
+        }
+      }
+
+      // Update selected details group if open in modal
+      if (selectedDetailsGroup) {
+        setSelectedDetailsGroup((prev: any) => {
+          if (!prev) return null;
+          const updatedStatements = prev.statements.map((st: any) => {
+            const savedRec = records.find(r => r.id === st.id);
+            if (savedRec) {
+              const prevAmt = savedRec.amountCollectedFromOwner || 0;
+              const isPaid = savedRec.status === "collected" || prevAmt >= st.earnedCommission;
+              return {
+                ...st,
+                status: savedRec.status,
+                amountCollectedFromOwner: prevAmt,
+                remainingCommission: Math.max(0, st.earnedCommission - prevAmt),
+                collectionDate: savedRec.collectionDate || "",
+                paymentMethod: savedRec.paymentMethod || "نقدي",
+                referenceNumber: savedRec.referenceNumber || "",
+                notes: savedRec.notes || ""
+              };
+            }
+            return st;
+          });
+          const totalCollected = updatedStatements.reduce((sum: number, s: any) => sum + (s.amountCollectedFromOwner || 0), 0);
+          const remaining = Math.max(0, prev.earnedCommission - totalCollected);
+          return {
+            ...prev,
+            statements: updatedStatements,
+            amountCollectedFromOwner: totalCollected,
+            remainingCommission: remaining,
+            collectedMonthsCount: updatedStatements.filter((s: any) => s.status === "collected").length
+          };
+        });
+      }
+    } catch (err: any) {
+      console.error("Error saving commission collection:", err);
+      throw err;
+    } finally {
+      setIsSavingCommStatus(false);
+    }
+  };
+
+  const handleRevertCommissionStatement = async (stmt: CommissionStatementItem) => {
+    setIsSavingCommStatus(true);
+    try {
+      let docId = stmt.id ? String(stmt.id).trim() : "";
+      if (!docId || docId === "all") {
+        docId = `${stmt.propertyId}_${stmt.forMonthYear || commSelectedMonthYear}`;
+      }
+
+      const revertedRec: ReCommissionStatus = {
+        id: docId,
+        propertyId: stmt.propertyId,
+        propertyName: stmt.propertyName,
+        ownerId: stmt.ownerId,
+        ownerName: stmt.ownerName,
+        forMonthYear: stmt.forMonthYear,
+        status: "not_claimed",
+        isCollectedFromOwner: false,
+        amountCollectedFromOwner: 0,
+        collectionDate: "",
+        paymentMethod: "نقدي",
+        referenceNumber: "",
+        notes: `تم التراجع عن تحصيل العمولة بتاريخ ${new Date().toLocaleDateString("ar-EG")}`,
+        updatedAt: new Date().toISOString().slice(0, 10),
+        updatedBy: currentUser.fullName || currentUser.username
+      };
+
+      if (onSaveCommissionStatus) {
+        await onSaveCommissionStatus(revertedRec);
+      } else {
+        await saveCommissionStatusDoc(revertedRec);
+      }
+
+      // Update selected details group if open
+      if (selectedDetailsGroup) {
+        setSelectedDetailsGroup((prev: any) => {
+          if (!prev) return null;
+          const updatedStatements = prev.statements.map((st: any) => {
+            if (st.id === stmt.id) {
+              return {
+                ...st,
+                status: "not_claimed",
+                amountCollectedFromOwner: 0,
+                remainingCommission: st.earnedCommission,
+                collectionDate: "",
+                paymentMethod: "نقدي",
+                referenceNumber: "",
+                notes: ""
+              };
+            }
+            return st;
+          });
+          const totalCollected = updatedStatements.reduce((sum: number, s: any) => sum + (s.amountCollectedFromOwner || 0), 0);
+          const remaining = Math.max(0, prev.earnedCommission - totalCollected);
+          return {
+            ...prev,
+            statements: updatedStatements,
+            amountCollectedFromOwner: totalCollected,
+            remainingCommission: remaining,
+            collectedMonthsCount: updatedStatements.filter((s: any) => s.status === "collected").length
+          };
+        });
+      }
+    } catch (err: any) {
+      console.error("Error reverting commission:", err);
+      throw err;
+    } finally {
+      setIsSavingCommStatus(false);
+    }
+  };
 
   const handleOpenEditCommStatusModal = (record: typeof commissionStatements[0]) => {
     setEditingCommRecord(record);
@@ -2772,6 +2911,7 @@ export default function RealEstateFinancials({
 
   useBackHandler(!!editingRentDue, () => setEditingRentDue(null));
   useBackHandler(!!arrearsModalData, () => setArrearsModalData(null));
+  useBackHandler(!!revertModalData, () => setRevertModalData(null));
   useBackHandler(!!tenantReceiptsModalTenant, () => {
     if (selectedReceiptForPreview) {
       setSelectedReceiptForPreview(null);
@@ -3534,44 +3674,35 @@ export default function RealEstateFinancials({
                           });
                           const pastAndCurrentUncollected = uncollectedOnly.filter(d => !d.forMonthYear || d.forMonthYear <= currentMonthISO);
                           const pastArrearsCountOnly = pastAndCurrentUncollected.length;
-                          const hasReserveDues = uncollectedOnly.some(d => d.forMonthYear > currentMonthISO);
 
                           if (initialTab === 'prepayment') {
                             if (pastArrearsCountOnly > 0) {
                               alert('⚠️ يجب سداد جميع المتأخرات أولًا قبل إجراء الدفع المسبق.');
                               return;
                             }
-                            setArrearsModalTab('prepayment');
-                            setArrearsModalData({
-                              tenant,
-                              unitObj,
-                              propObj,
-                              ownerObj,
-                              uncollectedDues: uncollectedOnly
-                            });
-                            const reserveDues = uncollectedOnly.filter(d => d.forMonthYear > currentMonthISO);
-                            setSelectedDueIdsForBatch(reserveDues.map(d => d.id));
+                            const futureDues = uncollectedOnly.filter(d => d.forMonthYear > currentMonthISO);
+                            if (futureDues.length > 0) {
+                              onCollectRent(futureDues);
+                            } else if (uncollectedOnly.length > 0) {
+                              onCollectRent(uncollectedOnly);
+                            } else {
+                              const tenantDues = validDues.filter(d => d.tenantId === tenant.id);
+                              if (tenantDues.length > 0) {
+                                onCollectRent(tenantDues[0]);
+                              }
+                            }
                             return;
                           }
 
-                          if (uncollectedOnly.length > 1 || pastArrearsCountOnly > 0 || hasReserveDues) {
-                            // Open Arrears Multi-Month Collection Modal
-                            setArrearsModalTab('arrears');
-                            setArrearsModalData({
-                              tenant,
-                              unitObj,
-                              propObj,
-                              ownerObj,
-                              uncollectedDues: uncollectedOnly
-                            });
-                            // Automatically select all uncollected dues for current and past months
-                            const arrearsDues = uncollectedOnly.filter(d => !d.forMonthYear || d.forMonthYear <= currentMonthISO);
-                            setSelectedDueIdsForBatch(arrearsDues.map(d => d.id));
-                          } else if (uncollectedOnly.length === 1) {
-                            // Single month direct collection modal
-                            onCollectRent(uncollectedOnly[0]);
+                          if (uncollectedOnly.length > 0) {
+                            onCollectRent(uncollectedOnly);
                           } else {
-                            alert('⚠️ لا يوجد استحقاق غير محصل مسجل لهذا المستأجر.');
+                            const tenantDues = validDues.filter(d => d.tenantId === tenant.id);
+                            if (tenantDues.length > 0) {
+                              onCollectRent([tenantDues[0]]);
+                            } else {
+                              alert('⚠️ لا يوجد استحقاق غير محصل مسجل لهذا المستأجر.');
+                            }
                           }
                         };
 
@@ -8250,30 +8381,25 @@ export default function RealEstateFinancials({
                             <div className="flex items-center justify-center gap-1.5 flex-wrap">
                               {group.remainingCommission > 0 ? (
                                 <>
-                                  {group.statements.length === 1 ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleOpenEditCommStatusModal(group.statements[0])}
-                                      className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-md border border-emerald-400/40 transition-all cursor-pointer inline-flex items-center justify-center gap-1.5 hover:scale-[1.02] active:scale-95"
-                                      title="تسجيل تحصيل عمولة هذا العقار"
-                                    >
-                                      <Coins className="w-3.5 h-3.5 text-amber-300" />
-                                      <span>تحصيل العمولة</span>
-                                    </button>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => setSelectedPropertyCommPropertyId(group.propertyId)}
-                                      className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-md border border-emerald-400/40 transition-all cursor-pointer inline-flex items-center justify-center gap-1.5 hover:scale-[1.02] active:scale-95"
-                                      title="عرض الشهور وتحصيل العمولة"
-                                    >
-                                      <Coins className="w-3.5 h-3.5 text-amber-300" />
-                                      <span>تحصيل العمولة</span>
-                                    </button>
-                                  )}
                                   <button
                                     type="button"
-                                    onClick={() => setSelectedPropertyCommPropertyId(group.propertyId)}
+                                    onClick={() => {
+                                      if (group.statements.length === 1) {
+                                        handleOpenCollectCommission(group.statements[0], group);
+                                      } else {
+                                        handleOpenCollectCommission(undefined, group);
+                                      }
+                                    }}
+                                    className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-md border border-emerald-400/40 transition-all cursor-pointer inline-flex items-center justify-center gap-1.5 hover:scale-[1.02] active:scale-95"
+                                    title="تسجيل تحصيل عمولة هذا العقار"
+                                  >
+                                    <Coins className="w-3.5 h-3.5 text-amber-300" />
+                                    <span>تحصيل العمولة</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenCommissionDetails(group)}
                                     className="px-2.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-[#D4A84F] border border-[#D4A84F]/40 text-xs font-black transition-all cursor-pointer inline-flex items-center justify-center gap-1 shadow-sm hover:scale-[1.02] active:scale-95"
                                     title="عرض الشهور وتفاصيل السجلات"
                                   >
@@ -8282,15 +8408,21 @@ export default function RealEstateFinancials({
                                   </button>
                                 </>
                               ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedPropertyCommPropertyId(group.propertyId)}
-                                  className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-[#D4A84F] border border-[#D4A84F]/40 text-xs font-black transition-all cursor-pointer inline-flex items-center justify-center gap-1.5 shadow-sm hover:scale-[1.02] active:scale-95"
-                                  title="عرض الشهور وتفاصيل تحصيل العمولة"
-                                >
-                                  <Eye className="w-3.5 h-3.5 text-amber-400" />
-                                  <span>عرض التفاصيل</span>
-                                </button>
+                                <>
+                                  <span className="px-2.5 py-1 rounded-xl bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[11px] font-black inline-flex items-center gap-1">
+                                    <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                                    <span>محصلة بالكامل</span>
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenCommissionDetails(group)}
+                                    className="px-2.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-[#D4A84F] border border-[#D4A84F]/40 text-xs font-black transition-all cursor-pointer inline-flex items-center justify-center gap-1.5 shadow-sm hover:scale-[1.02] active:scale-95"
+                                    title="عرض الشهور وتفاصيل تحصيل العمولة"
+                                  >
+                                    <Eye className="w-3.5 h-3.5 text-amber-400" />
+                                    <span>التفاصيل</span>
+                                  </button>
+                                </>
                               )}
                             </div>
                           </td>
@@ -8306,616 +8438,38 @@ export default function RealEstateFinancials({
         </div>
       )}
 
-      {/* VIEW 7: المطابقة والإغلاق المالي (REMOVED) */}
-      {false && (() => {
-        return null;
-        const activeClosingMonth = selectedMonthYear === 'all' ? currentMonthISO : selectedMonthYear;
-        const closingDuesList = validDues.filter(d => selectedMonthYear === 'all' || d.forMonthYear === selectedMonthYear);
+      {/* Tenant Collection Receipts Modal */}
+      {tenantReceiptsModalTenant && (
+        <TenantCollectionReceiptsModal
+          isOpen={!!tenantReceiptsModalTenant}
+          onClose={() => setTenantReceiptsModalTenant(null)}
+          tenant={tenantReceiptsModalTenant}
+          receipts={collections.filter(c => c.tenantId === tenantReceiptsModalTenant.id)}
+          dues={validDues.filter(d => d.tenantId === tenantReceiptsModalTenant.id)}
+          units={units}
+          properties={properties}
+          owners={owners}
+          onDeleteReceipt={onDeleteCollection}
+          currentUser={currentUser}
+        />
+      )}
 
-        // 1. Tenant Rent Summary
-        let totalTenantRent = 0;
-        let collectedTenantRent = 0;
-        let uncollectedTenantRent = 0;
-
-        // 2. Owner Net Due Summary (سواء تم الصرف أو لم يتم الصرف)
-        let totalOwnerRentDue = 0;
-        let totalOwnerPaidOut = 0;
-        let totalOwnerPendingPayout = 0;
-
-        // 3. Office Commission Summary
-        let totalCommissionDue = 0;
-        let totalCommissionCollected = 0;
-
-        closingDuesList.forEach(d => {
-          const rent = d.rentAmount || 0;
-          totalTenantRent += rent;
-
-          const cStatus = getDueCollectionStatus(d, todayISO, currentMonthISO, collections);
-          const isCollected = cStatus === 'collected' || (d.collectedAmount || 0) > 0 || !!d.paidDate;
-          const collAmt = isCollected ? (d.collectedAmount || rent) : (d.collectedAmount || 0);
-          collectedTenantRent += collAmt;
-
-          // Property & Owner details
-          const prop = properties.find(p => p.id === d.propertyId);
-          const owner = owners.find(o => o.id === (d.ownerId || prop?.ownerId));
-
-          let comm = getDueCommissionAmount(d, owners, properties);
-          totalCommissionDue += comm;
-          if (isCollected) {
-            totalCommissionCollected += comm;
-          }
-
-          const ownerDueForD = Math.max(0, rent - comm);
-          totalOwnerRentDue += ownerDueForD;
-
-          const pStatus = getDuePayoutStatus(d);
-          if (pStatus === 'paid_out') {
-            totalOwnerPaidOut += (d.payoutAmount || ownerDueForD);
-          } else {
-            totalOwnerPendingPayout += ownerDueForD;
-          }
-        });
-
-        uncollectedTenantRent = Math.max(0, totalTenantRent - collectedTenantRent);
-        const totalCommissionRemaining = Math.max(0, totalCommissionDue - totalCommissionCollected);
-
-        // Per-Property Financial Closing Grouping
-        const propertyClosingMap = new Map<string, {
-          property: ReProperty;
-          ownerName: string;
-          dues: typeof closingDuesList;
-          tenantRentTotal: number;
-          tenantRentCollected: number;
-          tenantRentUncollected: number;
-          ownerDueTotal: number;
-          ownerPaidOut: number;
-          ownerPendingPayout: number;
-          commissionDueTotal: number;
-          commissionCollected: number;
-          closedCount: number;
-        }>();
-
-        closingDuesList.forEach(d => {
-          const propId = d.propertyId || 'other';
-          const prop = properties.find(p => p.id === propId) || {
-            id: propId,
-            name: d.propertyName || 'عقار غير محدد',
-            ownerId: d.ownerId || '',
-          } as ReProperty;
-
-          const owner = owners.find(o => o.id === (d.ownerId || prop.ownerId));
-          const ownerName = owner?.name || 'مالك غير محدد';
-
-          let comm = getDueCommissionAmount(d, owners, properties);
-
-          const rent = d.rentAmount || 0;
-          const cStatus = getDueCollectionStatus(d, todayISO, currentMonthISO, collections);
-          const isCollected = cStatus === 'collected' || (d.collectedAmount || 0) > 0 || !!d.paidDate;
-          const collAmt = isCollected ? (d.collectedAmount || rent) : (d.collectedAmount || 0);
-
-          const ownerDueForD = Math.max(0, rent - comm);
-          const pStatus = getDuePayoutStatus(d);
-          const paidOutForD = pStatus === 'paid_out' ? (d.payoutAmount || ownerDueForD) : 0;
-          const pendingPayoutForD = pStatus === 'paid_out' ? 0 : ownerDueForD;
-
-          if (!propertyClosingMap.has(propId)) {
-            propertyClosingMap.set(propId, {
-              property: prop,
-              ownerName,
-              dues: [],
-              tenantRentTotal: 0,
-              tenantRentCollected: 0,
-              tenantRentUncollected: 0,
-              ownerDueTotal: 0,
-              ownerPaidOut: 0,
-              ownerPendingPayout: 0,
-              commissionDueTotal: 0,
-              commissionCollected: 0,
-              closedCount: 0,
-            });
-          }
-
-          const entry = propertyClosingMap.get(propId)!;
-          entry.dues.push(d);
-          entry.tenantRentTotal += rent;
-          entry.tenantRentCollected += collAmt;
-          entry.tenantRentUncollected += Math.max(0, rent - collAmt);
-          entry.ownerDueTotal += ownerDueForD;
-          entry.ownerPaidOut += paidOutForD;
-          entry.ownerPendingPayout += pendingPayoutForD;
-          entry.commissionDueTotal += comm;
-          if (isCollected) entry.commissionCollected += comm;
-          if (d.monthClosingStatus === 'closed') entry.closedCount += 1;
-        });
-
-        const propertyClosingList = Array.from(propertyClosingMap.values());
-
-        return (
-          <div className="space-y-6">
-            {/* Header Banner */}
-            <div className="p-5 bg-[#132238]/80 backdrop-blur-md rounded-2xl border border-[#D4A84F]/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl">
-              <div className="flex items-center gap-3.5">
-                <div className="p-3.5 rounded-2xl bg-gradient-to-br from-[#D4A84F]/30 to-[#D4A84F]/10 border border-[#D4A84F]/40 text-[#D4A84F] shadow-lg">
-                  <Lock className="w-7 h-7 stroke-[2.5]" />
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-[#F8F9FB] flex items-center gap-2">
-                    شاشة المطابقة والإغلاق المالي الشامل للشهور
-                    <span className="px-2.5 py-0.5 text-[10px] rounded-md bg-[#D4A84F]/20 text-[#D4A84F] border border-[#D4A84F]/30 font-bold">
-                      {selectedMonthYear === 'all' ? 'جميع الشهور' : `شهر ${selectedMonthYear}`}
-                    </span>
-                  </h3>
-                  <p className="text-xs text-[#9EA7B8] font-bold mt-0.5">
-                    حسابات محصل وغير محصل إيجارات المستأجرين، ومستحقات المالك المتبقية والمصروفة، والعمولة المستحقة عن كل عقار.
-                  </p>
-                </div>
-              </div>
-
-              {/* Month Picker */}
-              <div className="flex items-center gap-2 w-full md:w-auto">
-                <label className="text-xs text-[#9EA7B8] font-bold whitespace-nowrap">شهر الإغلاق المالي:</label>
-                <input
-                  type="month"
-                  value={selectedMonthYear === 'all' ? '' : selectedMonthYear}
-                  onChange={e => setSelectedMonthYear(e.target.value || 'all')}
-                  className="px-3 py-2 rounded-xl bg-[#08111F]/90 border border-[#D4A84F]/30 text-xs text-[#F8F9FB] font-bold focus:border-[#D4A84F] outline-none shadow-inner"
-                />
-                {selectedMonthYear !== 'all' && (
-                  <button
-                    onClick={() => setSelectedMonthYear('all')}
-                    className="px-2.5 py-2 text-xs font-bold text-[#D4A84F] bg-[#132238] border border-[#D4A84F]/20 rounded-xl hover:bg-[#1C2D42]"
-                  >
-                    عرض الكل
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* 3 Main KPI Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Card 1: Tenant Rents */}
-              <div className="bg-gradient-to-br from-[#132238]/90 to-[#08111F]/90 p-5 rounded-2xl border border-sky-500/20 shadow-lg space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-sky-400 font-black flex items-center gap-1.5">
-                    <Receipt className="w-4 h-4" /> 1. إيجارات المستأجرين (المحصل / غير المحصل)
-                  </span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-300 font-bold border border-sky-500/20">
-                    {closingDuesList.length} استحقاق
-                  </span>
-                </div>
-                <div className="text-2xl font-black font-mono text-[#F8F9FB]">
-                  {totalTenantRent.toLocaleString('ar-EG')} <span className="text-xs font-sans text-sky-400">ج.م (إجمالي)</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-white/10 font-bold">
-                  <div className="bg-emerald-500/10 p-2 rounded-xl border border-emerald-500/20">
-                    <span className="text-[10px] text-emerald-300 block">المحصل من المستأجرين</span>
-                    <span className="font-mono text-emerald-400 text-sm">{collectedTenantRent.toLocaleString('ar-EG')} ج.م</span>
-                  </div>
-                  <div className="bg-rose-500/10 p-2 rounded-xl border border-rose-500/20">
-                    <span className="text-[10px] text-rose-300 block">غير المحصل (متأخرات)</span>
-                    <span className="font-mono text-rose-400 text-sm">{uncollectedTenantRent.toLocaleString('ar-EG')} ج.م</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Card 2: Owner Rent Due */}
-              <div className="bg-gradient-to-br from-[#132238]/90 to-[#08111F]/90 p-5 rounded-2xl border border-amber-500/20 shadow-lg space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-amber-400 font-black flex items-center gap-1.5">
-                    <Landmark className="w-4 h-4" /> 2. صافي إيجارات الملاك المستحقة
-                  </span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 font-bold border border-amber-500/20">
-                    خصم عمولة المكتب
-                  </span>
-                </div>
-                <div className="text-2xl font-black font-mono text-amber-300">
-                  {totalOwnerRentDue.toLocaleString('ar-EG')} <span className="text-xs font-sans text-amber-400">ج.م (المستحق الكلي)</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-white/10 font-bold">
-                  <div className="bg-emerald-500/10 p-2 rounded-xl border border-emerald-500/20">
-                    <span className="text-[10px] text-emerald-300 block">تم الصرف للملاك</span>
-                    <span className="font-mono text-emerald-400 text-sm">{totalOwnerPaidOut.toLocaleString('ar-EG')} ج.م</span>
-                  </div>
-                  <div className="bg-amber-500/10 p-2 rounded-xl border border-amber-500/20">
-                    <span className="text-[10px] text-amber-300 block">بانتظار الصرف للملاك</span>
-                    <span className="font-mono text-amber-400 text-sm">{totalOwnerPendingPayout.toLocaleString('ar-EG')} ج.م</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Card 3: Office Commission */}
-              <div className="bg-gradient-to-br from-[#132238]/90 to-[#08111F]/90 p-5 rounded-2xl border border-[#D4A84F]/30 shadow-lg space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-[#D4A84F] font-black flex items-center gap-1.5">
-                    <DollarSign className="w-4 h-4" /> 3. عمولة المكتب المستحقة
-                  </span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#D4A84F]/10 text-[#D4A84F] font-bold border border-[#D4A84F]/20">
-                    إدارة العقارات
-                  </span>
-                </div>
-                <div className="text-2xl font-black font-mono text-[#F8F9FB]">
-                  {totalCommissionDue.toLocaleString('ar-EG')} <span className="text-xs font-sans text-[#D4A84F]">ج.م (العمولة الكلية)</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-white/10 font-bold">
-                  <div className="bg-emerald-500/10 p-2 rounded-xl border border-emerald-500/20">
-                    <span className="text-[10px] text-emerald-300 block">العمولة المحصلة فعلياً</span>
-                    <span className="font-mono text-emerald-400 text-sm">{totalCommissionCollected.toLocaleString('ar-EG')} ج.م</span>
-                  </div>
-                  <div className="bg-amber-500/10 p-2 rounded-xl border border-amber-500/20">
-                    <span className="text-[10px] text-amber-300 block">المتبقي غير المحصل</span>
-                    <span className="font-mono text-amber-400 text-sm">{totalCommissionRemaining.toLocaleString('ar-EG')} ج.م</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Property-by-Property Breakdown Table (كشف الإغلاق المالي تفصيلياً عن كل عقار) */}
-            <div className="bg-[#132238]/70 backdrop-blur-md rounded-2xl border border-[#D4A84F]/20 p-5 space-y-4 shadow-xl">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-[#D4A84F]/15 pb-3">
-                <h4 className="text-sm font-black text-[#F8F9FB] flex items-center gap-2">
-                  <Building2 className="w-5 h-5 text-[#D4A84F]" />
-                  كشف حساب الإغلاق المالي مفصلاً عن كل عقار لشهر ({selectedMonthYear === 'all' ? 'جميع الشهور' : selectedMonthYear})
-                </h4>
-                <span className="text-xs font-bold text-[#9EA7B8]">
-                  عدد العقارات المسجلة بالأرشيف: {propertyClosingList.length} عقار
-                </span>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-right text-xs">
-                  <thead>
-                    <tr className="bg-[#08111F]/90 text-[#9EA7B8] font-bold border-b border-[#D4A84F]/15">
-                      <th className="p-3">#</th>
-                      <th className="p-3">العقار والمالك</th>
-                      <th className="p-3 text-center">إجمالي إيجارات المستأجرين</th>
-                      <th className="p-3 text-center">المحصل من المستأجرين</th>
-                      <th className="p-3 text-center">غير المحصل (متأخرات)</th>
-                      <th className="p-3 text-center">المستحق للمالك (صافي)</th>
-                      <th className="p-3 text-center">حالة صرف المالك</th>
-                      <th className="p-3 text-center">عمولة المكتب المستحقة</th>
-                      <th className="p-3 text-center">حالة إغلاق العقار</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#D4A84F]/10 font-bold text-[#F8F9FB]">
-                    {propertyClosingList.length === 0 ? (
-                      <tr>
-                        <td colSpan={9} className="p-8 text-center text-[#9EA7B8] font-bold">
-                          لا توجد استحقاقات مالية مسجلة لهذا الشهر
-                        </td>
-                      </tr>
-                    ) : (
-                      propertyClosingList.map((item, idx) => {
-                        const isFullyClosed = item.closedCount === item.dues.length && item.dues.length > 0;
-                        const isFullyMatched = item.tenantRentUncollected === 0 && item.ownerPendingPayout === 0;
-
-                        return (
-                          <tr key={item.property.id} className="hover:bg-[#08111F]/50 transition-all">
-                            <td className="p-3 text-center font-mono text-[#9EA7B8]">{idx + 1}</td>
-                            <td className="p-3">
-                              <div className="font-extrabold text-[#F8F9FB]">{item.property.name}</div>
-                              <div className="text-[10px] text-amber-400 font-bold">المالك: {item.ownerName}</div>
-                            </td>
-                            <td className="p-3 text-center font-mono font-extrabold text-sky-300">
-                              {item.tenantRentTotal.toLocaleString('ar-EG')} ج.م
-                            </td>
-                            <td className="p-3 text-center font-mono font-extrabold text-emerald-400">
-                              {item.tenantRentCollected.toLocaleString('ar-EG')} ج.م
-                            </td>
-                            <td className="p-3 text-center font-mono font-extrabold">
-                              {item.tenantRentUncollected > 0 ? (
-                                <span className="text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
-                                  {item.tenantRentUncollected.toLocaleString('ar-EG')} ج.م
-                                </span>
-                              ) : (
-                                <span className="text-emerald-400">0 ج.م</span>
-                              )}
-                            </td>
-                            <td className="p-3 text-center font-mono font-extrabold text-amber-300">
-                              {item.ownerDueTotal.toLocaleString('ar-EG')} ج.م
-                            </td>
-                            <td className="p-3 text-center font-mono text-[11px]">
-                              {item.ownerPendingPayout === 0 && item.ownerDueTotal > 0 ? (
-                                <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-bold">
-                                  تم الصرف بالكامل ({item.ownerPaidOut.toLocaleString('ar-EG')} ج.م)
-                                </span>
-                              ) : item.ownerPaidOut > 0 ? (
-                                <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 font-bold">
-                                  صرف جزئي ({item.ownerPaidOut.toLocaleString('ar-EG')} / باقي {item.ownerPendingPayout.toLocaleString('ar-EG')} ج.م)
-                                </span>
-                              ) : (
-                                <span className="px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-300 border border-rose-500/30 font-bold">
-                                  بانتظار الصرف ({item.ownerPendingPayout.toLocaleString('ar-EG')} ج.م)
-                                </span>
-                              )}
-                            </td>
-                            <td className="p-3 text-center font-mono font-extrabold text-[#D4A84F]">
-                              {item.commissionDueTotal.toLocaleString('ar-EG')} ج.م
-                            </td>
-                            <td className="p-3 text-center">
-                              {isFullyClosed ? (
-                                <span className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[10px] font-black inline-flex items-center gap-1">
-                                  <Lock className="w-3 h-3" /> مغلق رسمياً
-                                </span>
-                              ) : isFullyMatched ? (
-                                <span className="px-2.5 py-1 rounded-lg bg-teal-500/20 text-teal-300 border border-teal-500/40 text-[10px] font-black inline-flex items-center gap-1">
-                                  <CheckCircle className="w-3 h-3 text-teal-400" /> مكتمل الجاهزية
-                                </span>
-                              ) : (
-                                <span className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/40 text-[10px] font-black inline-flex items-center gap-1">
-                                  <Clock className="w-3 h-3" /> بانتظار التسوية
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Detailed Rent Dues Table & Individual / Bulk Month Closing Actions */}
-            <div className="bg-[#132238]/60 backdrop-blur-md rounded-2xl border border-[#D4A84F]/15 p-5 space-y-4 shadow-xl">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-[#D4A84F]/10 pb-3">
-                <div>
-                  <h4 className="text-sm font-black text-[#F8F9FB] flex items-center gap-2">
-                    <Lock className="w-4 h-4 text-[#D4A84F]" />
-                    جدول مطابقة واعتماد إغلاق العقود والوحدات الفردية لشهر ({selectedMonthYear === 'all' ? 'جميع الشهور' : selectedMonthYear})
-                  </h4>
-                  <p className="text-xs text-[#9EA7B8] font-bold mt-0.5">
-                    يمكنك اعتماد الإغلاق المالي لكل عقد على حدة أو إغلاق كافة العقود المكتملة دفعة واحدة.
-                  </p>
-                </div>
-
-                {closingDuesList.length > 0 && (
-                  <button
-                    onClick={() => {
-                      const openDues = closingDuesList.filter(d => d.monthClosingStatus !== 'closed');
-                      if (openDues.length === 0) {
-                        alert('جميع الاستحقاقات لهذا الشهر مغلقة رسمياً بالفعل!');
-                        return;
-                      }
-                      if (confirm(`هل أنت متأكد من اعتماد الإغلاق المالي لكافة عقود شهر (${selectedMonthYear}) البالغ عددها (${openDues.length}) استحقاق؟`)) {
-                        openDues.forEach(d => {
-                          if (onCloseMonthDue) onCloseMonthDue(d.id);
-                        });
-                        alert('✅ تم اعتماد الإغلاق المالي لجميع العقود المحددة بنجاح!');
-                      }
-                    }}
-                    className="px-4 py-2 bg-gradient-to-r from-[#D4A84F] to-[#C3973E] text-slate-950 font-black text-xs rounded-xl hover:brightness-110 transition-all shadow-md flex items-center gap-2 cursor-pointer whitespace-nowrap"
-                  >
-                    <Lock className="w-4 h-4" />
-                    اعتماد إغلاق شهر ({selectedMonthYear === 'all' ? 'الكل' : selectedMonthYear}) بالكامل
-                  </button>
-                )}
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-right text-xs">
-                  <thead>
-                    <tr className="bg-[#08111F]/80 text-[#9EA7B8] font-bold border-b border-[#D4A84F]/10">
-                      <th className="p-3">العقار والوحدة</th>
-                      <th className="p-3">المستأجر</th>
-                      <th className="p-3">إجمالي الإيجار</th>
-                      <th className="p-3">عمولة المكتب</th>
-                      <th className="p-3">صافي المالك</th>
-                      <th className="p-3">حالة صرف المالك</th>
-                      <th className="p-3">حالة تحصيل المستأجر</th>
-                      <th className="p-3">حالة المطابقة</th>
-                      <th className="p-3 text-center">إغلاق الشهر</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#D4A84F]/10 font-bold">
-                    {closingDuesList.map(d => {
-                      const pStatus = getDuePayoutStatus(d);
-                      const cStatus = getDueCollectionStatus(d, todayISO, currentMonthISO, collections);
-                      const isFullyMatched = pStatus === 'paid_out' && cStatus === 'collected';
-
-                      const prop = properties.find(p => p.id === d.propertyId);
-                      const owner = owners.find(o => o.id === (d.ownerId || prop?.ownerId));
-
-                      let comm = getDueCommissionAmount(d, owners, properties);
-                      const ownerNet = Math.max(0, (d.rentAmount || 0) - comm);
-
-                      return (
-                        <tr key={d.id} className="hover:bg-[#08111F]/40 transition-all">
-                          <td className="p-3 font-extrabold text-[#F8F9FB]">
-                            {d.propertyName} - وحدة {d.unitNumber}
-                          </td>
-                          <td className="p-3 text-[#9EA7B8]">{d.tenantName}</td>
-                          <td className="p-3 font-mono text-[#F8F9FB]">{d.rentAmount.toLocaleString('ar-EG')} ج.م</td>
-                          <td className="p-3 font-mono text-[#D4A84F]">{comm.toLocaleString('ar-EG')} ج.م</td>
-                          <td className="p-3 font-mono text-amber-300">{ownerNet.toLocaleString('ar-EG')} ج.م</td>
-                          <td className="p-3">
-                            {pStatus === 'paid_out' ? <span className="text-emerald-400">تم الصرف</span> : <span className="text-amber-400">بانتظار الصرف</span>}
-                          </td>
-                          <td className="p-3">
-                            {cStatus === 'collected' ? <span className="text-emerald-400">تم التحصيل</span> : <span className="text-rose-400">بانتظار التحصيل</span>}
-                          </td>
-                          <td className="p-3">
-                            {d.monthClosingStatus === 'closed' ? (
-                              <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">مغلق رسمياً 🔒</span>
-                            ) : isFullyMatched ? (
-                              <span className="px-2 py-0.5 rounded text-[10px] bg-teal-500/20 text-teal-300 border border-teal-500/30">جاهز للإغلاق 🟢</span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30">غير مكتمل المطابقة ⚠️</span>
-                            )}
-                          </td>
-                          <td className="p-3 text-center">
-                            <div className="flex items-center justify-center gap-1.5">
-                              {d.monthClosingStatus === 'closed' ? (
-                                <span className="text-[10px] text-emerald-400 font-bold">تم الإغلاق بواسطة {d.closedBy || 'النظام'}</span>
-                              ) : (
-                                <button
-                                  onClick={() => {
-                                    if (!isFullyMatched) {
-                                      if (!confirm('⚠️ انتبه: العمليتان (الصرف والتحصيل) لم تكتمل كلياً بعد. هل أنت متأكد من اعتماد إغلاق هذا الشهر لهذا العقد يدوياً؟')) return;
-                                    }
-                                    if (onCloseMonthDue) onCloseMonthDue(d.id);
-                                    else alert('✅ تم إغلاق الشهر وتأكيد مطابقة الحساب بنجاح!');
-                                  }}
-                                  className="px-3 py-1 rounded-lg bg-[#D4A84F] text-slate-950 font-black text-xs hover:bg-[#E5B95F] transition-all cursor-pointer inline-flex items-center gap-1"
-                                >
-                                  <Lock className="w-3 h-3" /> اعتماد الإغلاق
-                                </button>
-                              )}
-
-                              </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* VIEW 8: نظام التقارير المالية واحترافية الطباعة (REPORTS & PRINT ENGINE) */}
-      {currentTab === 'reports' && (
-        <div className="space-y-4">
-          
-          {/* Report Type Selector */}
-          <div className="flex flex-wrap items-center gap-2 p-2 bg-[#132238]/60 backdrop-blur-md rounded-2xl border border-[#D4A84F]/15">
-            {[
-              { id: 'property_monthly', label: '1. تقرير شهري لكل عقار' },
-              { id: 'owner_statement', label: '2. تقرير كشف حساب مالك' },
-              { id: 'tenant_statement', label: '3. تقرير كشف حساب مستأجر' },
-              { id: 'owner_payouts', label: '4. تقرير المصروف للملاك' },
-              { id: 'tenant_collections', label: '5. تقرير المحصل من المستأجرين' },
-              { id: 'arrears', label: '6. تقرير المتأخرات والديون' },
-              { id: 'office_commissions', label: '7. تقرير عمولات المكتب' },
-              { id: 'office_advances', label: '8. تقرير سُلف المكتب والفرق' }
-            ].map(r => (
-              <button
-                key={r.id}
-                onClick={() => setReportType(r.id as any)}
-                className={`px-3 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
-                  reportType === r.id
-                    ? 'bg-[#D4A84F] text-slate-950 shadow-md font-bold'
-                    : 'text-[#9EA7B8] hover:text-[#F8F9FB] hover:bg-white/5'
-                }`}
-              >
-                {r.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Filters Bar */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-[#132238]/60 p-4 rounded-2xl border border-[#D4A84F]/15">
-            <div>
-              <label className="text-[10px] text-[#9EA7B8] block mb-1 font-bold">تصفية حسب العقار:</label>
-              <select
-                value={selectedPropertyId}
-                onChange={e => setSelectedPropertyId(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-[#08111F]/70 border border-[#D4A84F]/15 text-xs text-[#F8F9FB] font-bold focus:border-[#D4A84F] outline-none"
-              >
-                <option value="all">جميع العقارات</option>
-                {properties.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-[10px] text-[#9EA7B8] block mb-1 font-bold">تصفية حسب المالك:</label>
-              <select
-                value={selectedOwnerId}
-                onChange={e => setSelectedOwnerId(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-[#08111F]/70 border border-[#D4A84F]/15 text-xs text-[#F8F9FB] font-bold focus:border-[#D4A84F] outline-none"
-              >
-                <option value="all">جميع الملاك</option>
-                {owners.map(o => (
-                  <option key={o.id} value={o.id}>{o.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-[10px] text-[#9EA7B8] block mb-1 font-bold">شهر التقرير:</label>
-              <input
-                type="month"
-                value={selectedMonthYear === 'all' ? '' : selectedMonthYear}
-                onChange={e => setSelectedMonthYear(e.target.value || 'all')}
-                className="w-full px-3 py-2 rounded-xl bg-[#08111F]/70 border border-[#D4A84F]/15 text-xs text-[#F8F9FB] font-bold focus:border-[#D4A84F] outline-none"
-              />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => handleOpenReportPreview(reportType)}
-                className="px-4 py-2.5 bg-[#132238] hover:bg-[#1C2D42] text-[#D4A84F] border border-[#D4A84F]/40 text-xs font-black rounded-xl transition-all shadow-md hover:shadow-[#D4A84F]/10 flex items-center gap-2 cursor-pointer"
-              >
-                <Eye className="w-4 h-4" />
-                <span>معاينة التقرير</span>
-              </button>
-              <button
-                onClick={() => handlePrintReportDirectly(reportType)}
-                className="px-4 py-2.5 bg-gradient-to-r from-[#D4A84F] to-[#C3973E] text-slate-950 font-black text-xs rounded-xl hover:brightness-110 transition-all shadow-lg shadow-[#D4A84F]/20 flex items-center gap-2 cursor-pointer"
-              >
-                <Printer className="w-4 h-4" />
-                <span>طباعة التقرير</span>
-              </button>
-            </div>
-          </div>
-          {/* Report Information Card */}
-          {/* Report Information Card */}
-          <div className="bg-[#132238]/60 p-6 rounded-2xl border border-[#D4A84F]/15 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#D4A84F]/10 border border-[#D4A84F]/20 flex items-center justify-center text-[#D4A84F]">
-                <FileText className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-extrabold text-[#F8F9FB]">
-                  {reportType === "property_monthly" && "1. تقرير شهري لكل عقار"}
-                  {reportType === "owner_statement" && "2. تقرير كشف حساب مالك"}
-                  {reportType === "tenant_statement" && "3. تقرير كشف حساب مستأجر"}
-                  {reportType === "owner_payouts" && "4. تقرير المصروف للملاك"}
-                  {reportType === "tenant_collections" && "5. تقرير المحصل من المستأجرين"}
-                  {reportType === "arrears" && "6. تقرير المتأخرات والديون"}
-                  {reportType === "office_commissions" && "7. تقرير عمولات المكتب"}
-                  {reportType === "office_advances" && "8. تقرير سُلف المكتب والفرق"}
-                </h3>
-                <p className="text-xs text-[#9EA7B8] mt-0.5">
-                  {reportType === "property_monthly" && "تقرير شامل ومفصل لحركة الإيجارات، التحصيلات، المصروفات، وعمولات العقار عن شهر محدد أو كلي."}
-                  {reportType === "owner_statement" && "كشف حساب رسمي للمالك يوضح المستحق، المحصل، عمولة المكتب، سُلف المالك، والمتبقي للصرف."}
-                  {reportType === "tenant_statement" && "كشف حساب مفصل للمستأجر مع توضيح الإيجارات الشهرية وسندات السداد وتواريخ الدفع."}
-                  {reportType === "owner_payouts" && "سجل كافة سندات الصرف والتحويلات المالية المسددة للملاك مع أرقام السندات."}
-                  {reportType === "tenant_collections" && "سجل كافة سندات التحصيل والمبالغ المحصلة من المستأجرين مع أرقام الإيصالات."}
-                  {reportType === "arrears" && "حصر الديون والمتأخرات الإيجارية غير المحصلة مع مدد التأخير لكل مستأجر."}
-                  {reportType === "office_commissions" && "بيان شامل لعمولات المكتب المستحقة والمحصلة عن كل عقار ومالك."}
-                  {reportType === "office_advances" && "حصر سُلف المكتب الممنوحة للملاك ومطابقة الخصومات والاستردادات."}
-                </p>
-              </div>
-            </div>
-
-            <div className="pt-4 border-t border-[#D4A84F]/10 flex flex-wrap items-center justify-between gap-3">
-              <div className="text-xs text-[#9EA7B8] flex items-center gap-2 font-bold">
-                <Sparkles className="w-4 h-4 text-[#D4A84F]" />
-                <span>التقارير مصممة للطباعة الرسمية A4 بتنسيق معتمد وختم المؤسسة.</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handleOpenReportPreview(reportType)}
-                  className="px-4 py-2 bg-[#132238] hover:bg-[#1C2D42] text-[#D4A84F] border border-[#D4A84F]/40 text-xs font-black rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer"
-                >
-                  <Eye className="w-4 h-4" />
-                  <span>معاينة وتصدير</span>
-                </button>
-                <button
-                  onClick={() => handlePrintReportDirectly(reportType)}
-                  className="px-4 py-2 bg-gradient-to-r from-[#D4A84F] to-[#C3973E] text-slate-950 font-black text-xs rounded-xl hover:brightness-110 transition-all shadow-lg flex items-center gap-2 cursor-pointer"
-                >
-                  <Printer className="w-4 h-4" />
-                  <span>طباعة فورية</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* Property Payout Receipts Modal */}
+      {propertyPayoutsModalGroup && (
+        <PropertyPayoutReceiptsModal
+          isOpen={!!propertyPayoutsModalGroup}
+          onClose={() => setPropertyPayoutsModalGroup(null)}
+          propertyId={propertyPayoutsModalGroup.propertyId}
+          propertyName={propertyPayoutsModalGroup.propertyName}
+          ownerId={propertyPayoutsModalGroup.ownerId}
+          ownerName={propertyPayoutsModalGroup.ownerName}
+          payouts={payouts}
+          expenses={expenses}
+          advances={advances}
+          onDeletePayout={onDeletePayout}
+          currentUser={currentUser}
+          todayISO={todayISO}
+        />
       )}
 
       {/* Advance Deduction Modal */}
@@ -8925,42 +8479,58 @@ export default function RealEstateFinancials({
           onClose={() => setAdvanceDeductionModalData(null)}
           advance={advanceDeductionModalData.advance}
           availableNetEntitlement={advanceDeductionModalData.availableNetEntitlement}
-          onConfirmDeduct={handleConfirmAdvanceDeduction}
-          onRevertDeduction={handleRevertAdvanceDeduction}
+          onConfirm={handleConfirmAdvanceDeduction}
           isSubmitting={isSubmittingAdvanceDeduction}
-          currentUser={currentUser}
         />
       )}
 
       {/* Advance Deduction Receipts Modal */}
-      {isAdvanceReceiptsModalOpen && (
+      {isAdvanceReceiptsModalOpen && selectedAdvanceForReceipts && (
         <AdvanceDeductionReceiptsModal
           isOpen={isAdvanceReceiptsModalOpen}
           onClose={() => {
             setIsAdvanceReceiptsModalOpen(false);
             setSelectedAdvanceForReceipts(null);
           }}
-          advances={advances || []}
-          owners={owners}
+          advance={selectedAdvanceForReceipts}
           properties={properties}
-          selectedAdvance={selectedAdvanceForReceipts}
+          units={units}
+          owners={owners}
           currentUser={currentUser}
         />
       )}
 
-      {/* Tenant Collection Receipts Modal */}
-      {tenantReceiptsModalTenant && (
-        <TenantCollectionReceiptsModal
-          isOpen={!!tenantReceiptsModalTenant}
-          onClose={() => {
-            setTenantReceiptsModalTenant(null);
-            setSelectedReceiptForPreview(null);
-          }}
-          tenant={tenantReceiptsModalTenant}
-          collections={collections}
-          properties={properties}
+      {/* Commission Collection Modal */}
+      {collectCommModalData && (
+        <CommissionCollectModal
+          isOpen={!!collectCommModalData}
+          onClose={() => setCollectCommModalData(null)}
+          statement={collectCommModalData.statement}
+          group={collectCommModalData.group}
+          onConfirmCollect={handleSaveCommissionCollectionBatch}
+          currentUser={currentUser}
+          isSubmitting={isSavingCommStatus}
+        />
+      )}
+
+      {/* Property Commission Details Modal */}
+      {selectedDetailsGroup && (
+        <PropertyCommissionDetailsModal
+          isOpen={!!selectedDetailsGroup}
+          onClose={() => setSelectedDetailsGroup(null)}
+          group={selectedDetailsGroup}
+          property={properties.find(p => p.id === selectedDetailsGroup.propertyId) || null}
+          owner={owners.find(o => o.id === selectedDetailsGroup.ownerId) || null}
+          tenants={tenants}
           units={units}
-          owners={owners}
+          onCollectStatement={(stmt) => handleOpenCollectCommission(stmt, selectedDetailsGroup)}
+          onCollectAll={(grp) => handleOpenCollectCommission(undefined, grp)}
+          onRevertStatement={handleRevertCommissionStatement}
+          onPrint={(type) => {
+            setModalReportType(type as any);
+            setCommSelectedPropertyId(selectedDetailsGroup.propertyId);
+            setIsReportModalOpen(true);
+          }}
           currentUser={currentUser}
         />
       )}
@@ -8994,6 +8564,22 @@ export default function RealEstateFinancials({
           commSearchTerm={commSearchTerm}
           commStatements={filteredCommStatements}
           currentUser={currentUser}
+        />
+      )}
+
+      {/* Revert Collection Modal (الرجوع عن التحصيل والدفع المسبق) */}
+      {revertModalData && (
+        <RevertCollectionModal
+          isOpen={!!revertModalData}
+          onClose={() => {
+            setRevertModalData(null);
+            setSelectedDueIdsForRevert([]);
+          }}
+          data={revertModalData}
+          selectedDueIds={selectedDueIdsForRevert}
+          setSelectedDueIds={setSelectedDueIdsForRevert}
+          isProcessing={isProcessingRevert}
+          onConfirmRevert={handleConfirmRevertBatch}
         />
       )}
     </div>

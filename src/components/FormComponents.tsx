@@ -19,6 +19,8 @@ interface BaseModalProps {
   size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl';
   children: React.ReactNode;
   footerActions?: React.ReactNode;
+  bodyClassName?: string;
+  headerClassName?: string;
 }
 
 export const BaseModal: React.FC<BaseModalProps> = ({
@@ -29,7 +31,9 @@ export const BaseModal: React.FC<BaseModalProps> = ({
   icon: Icon,
   size = 'md',
   children,
-  footerActions
+  footerActions,
+  bodyClassName,
+  headerClassName
 }) => {
   const sizeClasses = {
     sm: 'max-w-md',
@@ -73,7 +77,7 @@ export const BaseModal: React.FC<BaseModalProps> = ({
             className={`relative bg-[#f8fafc] rounded-2xl shadow-2xl border border-slate-200/90 w-full ${sizeClasses[size]} max-h-[92vh] flex flex-col overflow-hidden text-right z-20 modal-content-container`}
           >
             {/* Modal Header */}
-            <div className="px-5 py-4 border-b border-slate-200/80 flex items-center justify-between bg-white shrink-0 z-10">
+            <div className={`px-5 py-3.5 border-b border-slate-200/80 flex items-center justify-between bg-white shrink-0 z-10 ${headerClassName || ''}`}>
               <div className="flex items-center gap-2.5 text-right">
                 {Icon && (
                   <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0 border border-amber-500/20">
@@ -103,7 +107,7 @@ export const BaseModal: React.FC<BaseModalProps> = ({
 
             {/* Modal Body with GPU acceleration, touch-scroll support, and overscroll lock */}
             <div 
-              className="flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-5 focus:outline-none scroll-smooth bg-slate-50/70"
+              className={`flex-1 overflow-y-auto overscroll-contain focus:outline-none scroll-smooth bg-slate-50/70 ${bodyClassName || 'p-4 sm:p-6 space-y-5'}`}
               style={{ WebkitOverflowScrolling: 'touch' }}
             >
               {children}

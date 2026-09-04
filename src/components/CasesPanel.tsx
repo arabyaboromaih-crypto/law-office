@@ -3555,53 +3555,53 @@ export default function CasesPanel({
         description={editingCase ? `تعديل البيانات القانونية لملف القضية الحالي ومراجعة المراحل` : 'تسجيل ملف نزاع قضائي وتعيين أطراف الخصومة والنيابة المختصة'}
         icon={Gavel}
         size="3xl"
+        bodyClassName="p-3.5 sm:p-5 pt-2 sm:pt-2.5 space-y-3.5"
       >
         {showFormModal && (
           <>
             {/* Stepper Navigation */}
-        {/* Stepper Navigation */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl px-4 sm:px-5 py-3 flex items-center justify-between gap-2 shrink-0 overflow-x-auto select-none mb-5 shadow-xs sticky top-0 z-20">
-          {[
-            { id: 'judicial', label: 'البيانات القضائية', desc: 'درجة التقاضي والمحكمة', icon: Gavel },
-            { id: 'investigation', label: 'مرحلة التحقيق والتجديد', desc: 'النيابة والحبس الاحتياطي', icon: ShieldAlert },
-            { id: 'litigants', label: 'أطراف الدعوى', desc: 'الموكلين والخصوم', icon: UserCheck },
-            { id: 'financials', label: 'الأتعاب والتعليمات', desc: 'العقد والدفاع', icon: Coins },
-            { id: 'attachments', label: 'المستندات والأوراق', desc: 'صحف الدعاوى والأحكام', icon: Paperclip }
-          ].map((step) => {
-            const Icon = step.icon;
-            const isActive = activeFormTab === step.id;
-            const stepsOrder = ['judicial', 'investigation', 'litigants', 'financials', 'attachments'];
-            const isCompleted = stepsOrder.indexOf(activeFormTab) > stepsOrder.indexOf(step.id);
-            return (
-              <button
-                key={step.id}
-                type="button"
-                onClick={() => {
-                  setActiveFormTab(step.id as any);
-                }}
-                className={`flex items-center gap-2.5 text-right transition-all duration-200 outline-none cursor-pointer py-1 px-2 rounded-xl ${
-                  isActive ? 'bg-slate-50 opacity-100 ring-1 ring-slate-200/80 shadow-3xs' : 'opacity-70 hover:opacity-100 hover:bg-slate-50/50'
-                }`}
-              >
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-300 ${
-                  isActive ? 'bg-slate-900 text-amber-400 shadow-xs ring-2 ring-amber-400/30' :
-                  isCompleted ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' :
-                  'bg-slate-50 text-slate-400 border border-slate-200'
-                }`}>
-                  {isCompleted ? <CheckCircle className="w-4 h-4 text-emerald-600" /> : <Icon className="w-4 h-4" />}
-                </div>
-                <div className="hidden md:block">
-                  <p className={`text-xs sm:text-[13px] font-black leading-tight ${isActive ? 'text-slate-900' : 'text-slate-600'}`}>
-                    {step.label}
-                  </p>
-                  <p className="text-[10px] text-slate-400 font-semibold">
-                    {step.desc}
-                  </p>
-                </div>
-              </button>
-            );
-          })}
-        </div>
+            <div className="bg-white border border-slate-200/90 rounded-2xl px-3 sm:px-4 py-2 sm:py-2.5 flex items-center justify-between gap-1.5 sm:gap-2 shrink-0 overflow-x-auto select-none mb-3.5 shadow-xs sticky top-0 z-20">
+              {[
+                { id: 'judicial', label: 'البيانات القضائية', desc: 'درجة التقاضي والمحكمة', icon: Gavel },
+                { id: 'investigation', label: 'مرحلة التحقيق والتجديد', desc: 'النيابة والحبس الاحتياطي', icon: ShieldAlert },
+                { id: 'litigants', label: 'أطراف الدعوى', desc: 'الموكلين والخصوم', icon: UserCheck },
+                { id: 'financials', label: 'الأتعاب والتعليمات', desc: 'العقد والدفاع', icon: Coins },
+                { id: 'attachments', label: 'المستندات والأوراق', desc: 'صحف الدعاوى والأحكام', icon: Paperclip }
+              ].map((step) => {
+                const Icon = step.icon;
+                const isActive = activeFormTab === step.id;
+                const stepsOrder = ['judicial', 'investigation', 'litigants', 'financials', 'attachments'];
+                const isCompleted = stepsOrder.indexOf(activeFormTab) > stepsOrder.indexOf(step.id);
+                return (
+                  <button
+                    key={step.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveFormTab(step.id as any);
+                    }}
+                    className={`flex items-center gap-2 text-right transition-all duration-200 outline-none cursor-pointer py-1 px-1.5 sm:px-2 rounded-xl ${
+                      isActive ? 'bg-slate-50 opacity-100 ring-1 ring-slate-200/80 shadow-3xs' : 'opacity-70 hover:opacity-100 hover:bg-slate-50/50'
+                    }`}
+                  >
+                    <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center transition-all duration-300 ${
+                      isActive ? 'bg-slate-900 text-amber-400 shadow-xs ring-2 ring-amber-400/30' :
+                      isCompleted ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' :
+                      'bg-slate-50 text-slate-400 border border-slate-200'
+                    }`}>
+                      {isCompleted ? <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600" /> : <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+                    </div>
+                    <div className="hidden md:block">
+                      <p className={`text-xs sm:text-[13px] font-black leading-tight ${isActive ? 'text-slate-900' : 'text-slate-600'}`}>
+                        {step.label}
+                      </p>
+                      <p className="text-[10px] text-slate-400 font-semibold leading-tight mt-0.5">
+                        {step.desc}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
 
         {/* Modal Body Form */}
         <form 
