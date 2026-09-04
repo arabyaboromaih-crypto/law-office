@@ -77,7 +77,7 @@ export const BaseModal: React.FC<BaseModalProps> = ({
             className={`relative bg-[#f8fafc] rounded-2xl shadow-2xl border border-slate-200/90 w-full ${sizeClasses[size]} max-h-[92vh] flex flex-col overflow-hidden text-right z-20 modal-content-container`}
           >
             {/* Modal Header */}
-            <div className={`px-5 py-3.5 border-b border-slate-200/80 flex items-center justify-between bg-white shrink-0 z-10 ${headerClassName || ''}`}>
+            <div className={`border-b border-slate-200/80 flex items-center justify-between bg-white shrink-0 z-10 ${headerClassName || 'px-5 py-3.5'}`}>
               <div className="flex items-center gap-2.5 text-right">
                 {Icon && (
                   <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0 border border-amber-500/20">

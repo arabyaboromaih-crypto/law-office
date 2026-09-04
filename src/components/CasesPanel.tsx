@@ -1542,8 +1542,14 @@ export default function CasesPanel({
     setCircuitCass(c.circuitCassation || (c.degree === 'نقض' ? c.circuit : '') || '');
     setShowAppealSection(!!(c.caseNumberSecondInstance || c.courtSecondInstance || c.degree === 'استئناف'));
     setShowCassationSection(!!(c.cassationNumber || c.courtCassation || c.degree === 'نقض'));
-    setCaseType(c.type);
-    setCustomCaseType('');
+    const standardCaseTypes = ['جنائي', 'جنح', 'جنح طفل', 'جنح مرور', 'جنح مالية', 'جنح اقتصادية', 'تهرب ضريبي', 'ادارى', 'مخالفات', 'مدني', 'تجاري', 'تجارى', 'عمال', 'تعويضات', 'إيجارات', 'أحوال شخصية', 'صحة توقيع', 'مجلس الدولة', 'تنفيذ', 'إشكالات', 'منازعات تنفيذ'];
+    if (c.type && standardCaseTypes.includes(c.type)) {
+      setCaseType(c.type as CaseType);
+      setCustomCaseType('');
+    } else {
+      setCaseType('أخرى');
+      setCustomCaseType(c.type || '');
+    }
     setCourt(c.court);
     setCircuit(c.circuit);
     setNextHearing(c.nextHearingDate || '');
@@ -2931,13 +2937,24 @@ export default function CasesPanel({
                     <option value="جنح">جنح</option>
                     <option value="جنح طفل">جنح طفل</option>
                     <option value="جنح مرور">جنح مرور</option>
+                    <option value="جنح مالية">جنح مالية</option>
+                    <option value="جنح اقتصادية">جنح اقتصادية</option>
+                    <option value="تهرب ضريبي">تهرب ضريبي</option>
                     <option value="ادارى">ادارى</option>
+                    <option value="مخالفات">مخالفات</option>
                     <option value="مدني">مدني</option>
+                    <option value="تجاري">تجاري</option>
+                    <option value="تجارى">تجارى</option>
+                    <option value="عمال">عمال</option>
                     <option value="تعويضات">تعويضات</option>
                     <option value="إيجارات">إيجارات</option>
                     <option value="أحوال شخصية">أحوال شخصية</option>
                     <option value="صحة توقيع">صحة توقيع</option>
-                    {allCaseTypes.filter(t => !['جنائي','جنح','جنح طفل','جنح مرور','ادارى','مدني','تعويضات','إيجارات','أحوال شخصية','صحة توقيع'].includes(t as string)).map(t => (
+                    <option value="مجلس الدولة">مجلس الدولة</option>
+                    <option value="تنفيذ">تنفيذ</option>
+                    <option value="إشكالات">إشكالات</option>
+                    <option value="منازعات تنفيذ">منازعات تنفيذ</option>
+                    {allCaseTypes.filter(t => !['جنائي','جنح','جنح طفل','جنح مرور','جنح مالية','جنح اقتصادية','تهرب ضريبي','ادارى','مخالفات','مدني','تجاري','تجارى','عمال','تعويضات','إيجارات','أحوال شخصية','صحة توقيع','مجلس الدولة','تنفيذ','إشكالات','منازعات تنفيذ'].includes(t as string)).map(t => (
                       <option key={t as string} value={t as string}>{t as string}</option>
                     ))}
                   </select>
@@ -3012,12 +3029,14 @@ export default function CasesPanel({
 
                 // Determine tag styling for Case Type
                 let typeBadgeStyle = 'bg-slate-50 text-slate-700 border-slate-200';
-                if (c.type === 'جنائي' || c.type === 'جنح' || c.type === 'جنح طفل' || c.type === 'جنح مرور' || c.type === 'ادارى') {
+                if (c.type === 'جنائي' || c.type === 'جنح' || c.type === 'جنح طفل' || c.type === 'جنح مرور' || c.type === 'جنح مالية' || c.type === 'جنح اقتصادية' || c.type === 'تهرب ضريبي' || c.type === 'ادارى') {
                   typeBadgeStyle = 'bg-rose-50 text-rose-700 border-rose-200/50';
                 } else if (c.type === 'إيجارات') {
                   typeBadgeStyle = 'bg-amber-50 text-amber-850 border-amber-200/50';
                 } else if (c.type === 'أحوال شخصية') {
                   typeBadgeStyle = 'bg-emerald-50 text-emerald-700 border-emerald-200/50';
+                } else if (c.type === 'تجاري' || c.type === 'تجارى' || c.type === 'عمال') {
+                  typeBadgeStyle = 'bg-indigo-50 text-indigo-700 border-indigo-200/50';
                 } else if (c.type === 'مدني' || c.type === 'تعويضات' || c.type === 'صحة توقيع') {
                   typeBadgeStyle = 'bg-blue-50 text-blue-700 border-blue-200/50';
                 }
@@ -3555,12 +3574,13 @@ export default function CasesPanel({
         description={editingCase ? `تعديل البيانات القانونية لملف القضية الحالي ومراجعة المراحل` : 'تسجيل ملف نزاع قضائي وتعيين أطراف الخصومة والنيابة المختصة'}
         icon={Gavel}
         size="3xl"
-        bodyClassName="p-3.5 sm:p-5 pt-2 sm:pt-2.5 space-y-3.5"
+        headerClassName="px-4 sm:px-6 py-2.5 sm:py-3"
+        bodyClassName="px-3.5 sm:px-6 pb-4 sm:pb-6 pt-1 sm:pt-1.5 space-y-3"
       >
         {showFormModal && (
           <>
             {/* Stepper Navigation */}
-            <div className="bg-white border border-slate-200/90 rounded-2xl px-3 sm:px-4 py-2 sm:py-2.5 flex items-center justify-between gap-1.5 sm:gap-2 shrink-0 overflow-x-auto select-none mb-3.5 shadow-xs sticky top-0 z-20">
+            <div className="bg-white border border-slate-200/90 rounded-2xl px-3 sm:px-4 py-2 sm:py-2.5 flex items-center justify-between gap-1.5 sm:gap-2 shrink-0 overflow-x-auto select-none mb-3 shadow-xs sticky top-0 z-20">
               {[
                 { id: 'judicial', label: 'البيانات القضائية', desc: 'درجة التقاضي والمحكمة', icon: Gavel },
                 { id: 'investigation', label: 'مرحلة التحقيق والتجديد', desc: 'النيابة والحبس الاحتياطي', icon: ShieldAlert },
@@ -4075,13 +4095,17 @@ export default function CasesPanel({
                       <option value="جنح">جنح</option>
                       <option value="جنح طفل">جنح طفل</option>
                       <option value="جنح مرور">جنح مرور</option>
+                      <option value="جنح مالية">جنح مالية</option>
+                      <option value="جنح اقتصادية">جنح اقتصادية</option>
+                      <option value="تهرب ضريبي">تهرب ضريبي</option>
                       <option value="ادارى">ادارى</option>
                       <option value="مخالفات">مخالفات</option>
                       <option value="مدني">مدني</option>
-                      <option value="تعويضات">تعويضات</option>
-                      <option value="إيجارات">إيجارات</option>
+                      <option value="تجاري">تجاري</option>
                       <option value="تجارى">تجارى</option>
                       <option value="عمال">عمال</option>
+                      <option value="تعويضات">تعويضات</option>
+                      <option value="إيجارات">إيجارات</option>
                       <option value="أحوال شخصية">أحوال شخصية</option>
                       <option value="صحة توقيع">صحة توقيع</option>
                       <option value="مجلس الدولة">مجلس الدولة</option>
@@ -4410,7 +4434,7 @@ export default function CasesPanel({
                   </FormField>
                 </FormGrid>
 
-                {(caseType === 'جنائي' || caseType === 'جنح' || caseType === 'جنح طفل' || caseType === 'جنح مرور' || caseType === 'ادارى' || caseType === 'مخالفات') && (
+                {(caseType === 'جنائي' || caseType === 'جنح' || caseType === 'جنح طفل' || caseType === 'جنح مرور' || caseType === 'جنح مالية' || caseType === 'جنح اقتصادية' || caseType === 'تهرب ضريبي' || caseType === 'ادارى' || caseType === 'مخالفات') && (
                   <div className="mt-4">
                     <FormField label="اسم السيد عضو النيابة العامة المسؤول عن المحضر">
                       <input

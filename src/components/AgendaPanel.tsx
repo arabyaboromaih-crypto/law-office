@@ -354,7 +354,7 @@ export default function AgendaPanel({
   const tomorrowStr = getLocalYYYYMMDD(tomorrowObj);
   const tomorrowSessionsCount = filteredSessions.filter(s => s.date === tomorrowStr).length;
   const upcomingSessionsCount = filteredSessions.filter(s => s.date > todayStr).length;
-  const completedSessionsCount = filteredSessions.filter(s => !!s.decision || s.status === 'completed').length;
+  const completedSessionsCount = filteredSessions.filter(s => (!!s.decision && s.decision.trim() !== '') || s.status === 'completed').length;
   const unrecordedSessions = sessions.filter(s => {
     const parentCase = cases.find(c => c.id === s.caseId);
     if (parentCase) {
@@ -365,8 +365,18 @@ export default function AgendaPanel({
       }
     }
     const isEnded = s.date <= todayStr;
-    const isDecisionMissing = !s.decision && s.status !== 'completed';
-    return isEnded && isDecisionMissing;
+    const hasRecordedDecision = (!!s.decision && s.decision.trim() !== '') || s.status === 'completed';
+    if (hasRecordedDecision) return false;
+
+    // Also check if another record for the same case on the same date has already recorded a decision
+    const hasDecisionOnSameDate = sessions.some(other => 
+      other.caseId === s.caseId && 
+      other.date === s.date && 
+      ((!!other.decision && other.decision.trim() !== '') || other.status === 'completed')
+    );
+    if (hasDecisionOnSameDate) return false;
+
+    return isEnded;
   }).sort((a, b) => b.date.localeCompare(a.date));
 
   const unrecordedSessionsCount = unrecordedSessions.length;
@@ -493,17 +503,18 @@ export default function AgendaPanel({
     const parentCase = cases.find(c => c.id === outcomeSession.caseId);
     const isDet = isDetentionSession(outcomeSession, parentCase);
     const durDays = Number(outcomeDetentionDurationDays) || 15;
-    const hasDecision = !!(decision && decision.trim() !== '');
+    const trimmedDecision = decision ? decision.trim() : '';
+    const hasDecision = trimmedDecision !== '';
 
     const updated: HearingSession = {
       ...outcomeSession,
       status: hasDecision ? 'completed' : (nextHearingDate ? 'postponed' : 'pending'),
       court: outcomeCourt || outcomeSession.court,
       circuit: outcomeCircuit || outcomeSession.circuit,
-      decision: decision || undefined,
-      nextHearingDate: nextHearingDate || undefined,
-      whatHappened,
-      requirements,
+      decision: hasDecision ? trimmedDecision : undefined,
+      nextHearingDate: nextHearingDate ? nextHearingDate.trim() : undefined,
+      whatHappened: whatHappened ? whatHappened.trim() : undefined,
+      requirements: requirements ? requirements.trim() : undefined,
       rollPhotoUrl: isRollUploaded ? 'roll_attached_url' : undefined,
       isDetentionRenewal: isDet ? true : outcomeSession.isDetentionRenewal,
       detentionStartDate: isDet ? (outcomeDetentionStartDate || outcomeSession.detentionStartDate || parentCase?.detentionStartDate) : undefined,

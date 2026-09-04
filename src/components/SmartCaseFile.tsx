@@ -440,7 +440,7 @@ function OverviewTab({
   const [degree, setDegree] = useState<LitigationDegree>(localCase.degree || 'أول درجة');
   
   // Standard list of types, check if type is there
-  const standardTypes = ['جنائي', 'جنح', 'جنح طفل', 'جنح مرور', 'ادارى', 'مخالفات', 'مدني', 'تعويضات', 'إيجارات', 'تجارى', 'عمال', 'أحوال شخصية', 'صحة توقيع', 'مجلس الدولة', 'تنفيذ', 'إشكالات', 'منازعات تنفيذ'];
+  const standardTypes = ['جنائي', 'جنح', 'جنح طفل', 'جنح مرور', 'جنح مالية', 'جنح اقتصادية', 'تهرب ضريبي', 'ادارى', 'مخالفات', 'مدني', 'تجاري', 'تجارى', 'عمال', 'تعويضات', 'إيجارات', 'أحوال شخصية', 'صحة توقيع', 'مجلس الدولة', 'تنفيذ', 'إشكالات', 'منازعات تنفيذ'];
   const [caseType, setCaseType] = useState<string>(() => {
     if (localCase.type && standardTypes.includes(localCase.type)) return localCase.type;
     return 'أخرى';
@@ -1036,9 +1036,11 @@ function OverviewTab({
         description="تعديل البيانات القانونية لملف القضية الحالي ومراجعة الأطراف والخصوم"
         icon={Gavel}
         size="4xl"
+        headerClassName="px-4 sm:px-6 py-2.5 sm:py-3"
+        bodyClassName="px-3.5 sm:px-6 pb-4 sm:pb-6 pt-1 sm:pt-1.5 space-y-3.5"
       >
         {/* Stepper Navigation */}
-        <div className="bg-slate-50 border border-slate-150 rounded-2xl px-6 py-3 flex items-center justify-between gap-2 shrink-0 overflow-x-auto select-none mb-6" dir="rtl">
+        <div className="bg-slate-50 border border-slate-150 rounded-2xl px-4 sm:px-6 py-2.5 flex items-center justify-between gap-2 shrink-0 overflow-x-auto select-none mb-3.5 shadow-xs" dir="rtl">
           {[
             { id: 'judicial', label: 'البيانات القضائية', desc: 'المحكمة والدائرة', icon: Gavel },
             { id: 'litigants', label: 'أطراف الدعوى', desc: 'الموكلين والخصوم', icon: UserCheck },
@@ -1119,13 +1121,17 @@ function OverviewTab({
                       <option value="جنح">جنح</option>
                       <option value="جنح طفل">جنح طفل</option>
                       <option value="جنح مرور">جنح مرور</option>
+                      <option value="جنح مالية">جنح مالية</option>
+                      <option value="جنح اقتصادية">جنح اقتصادية</option>
+                      <option value="تهرب ضريبي">تهرب ضريبي</option>
                       <option value="ادارى">ادارى</option>
                       <option value="مخالفات">مخالفات</option>
                       <option value="مدني">مدني</option>
-                      <option value="تعويضات">تعويضات</option>
-                      <option value="إيجارات">إيجارات</option>
+                      <option value="تجاري">تجاري</option>
                       <option value="تجارى">تجارى</option>
                       <option value="عمال">عمال</option>
+                      <option value="تعويضات">تعويضات</option>
+                      <option value="إيجارات">إيجارات</option>
                       <option value="أحوال شخصية">أحوال شخصية</option>
                       <option value="صحة توقيع">صحة توقيع</option>
                       <option value="مجلس الدولة">مجلس الدولة</option>
@@ -1451,7 +1457,7 @@ function OverviewTab({
                   </FormField>
                 </FormGrid>
 
-                {(caseType === 'جنائي' || caseType === 'جنح' || caseType === 'جنح طفل' || caseType === 'جنح مرور' || caseType === 'ادارى' || caseType === 'مخالفات') && (
+                {(caseType === 'جنائي' || caseType === 'جنح' || caseType === 'جنح طفل' || caseType === 'جنح مرور' || caseType === 'جنح مالية' || caseType === 'جنح اقتصادية' || caseType === 'تهرب ضريبي' || caseType === 'ادارى' || caseType === 'مخالفات') && (
                   <div className="mt-4">
                     <FormField label="اسم السيد عضو النيابة العامة المسؤول عن المحضر">
                       <input
