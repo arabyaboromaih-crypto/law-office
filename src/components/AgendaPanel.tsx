@@ -476,6 +476,14 @@ export default function AgendaPanel({
 
   // Open Outcome Modal
   const handleOpenOutcome = (s: HearingSession) => {
+    const parentCase = cases.find(c => c.id === s.caseId);
+    const isDet = isDetentionSession(s, parentCase);
+    if (isDet && parentCase) {
+      setDetentionModalCase(parentCase);
+      setDetentionModalInitialDate(s.date);
+      return;
+    }
+
     setOutcomeSession(s);
     setDecision(s.decision || '');
     setNextHearingDate(s.nextHearingDate || '');
@@ -486,8 +494,6 @@ export default function AgendaPanel({
     setOutcomeCourt(s.court || '');
     setOutcomeCircuit(s.circuit || '');
 
-    const parentCase = cases.find(c => c.id === s.caseId);
-    const isDet = isDetentionSession(s, parentCase);
     setOutcomeDetentionStartDate(s.detentionStartDate || parentCase?.detentionStartDate || '');
     setOutcomeDetentionDurationDays(s.detentionDurationDays || 15);
     setOutcomeDetentionRenewalNumber(s.detentionRenewalNumber || '');
@@ -1776,7 +1782,10 @@ export default function AgendaPanel({
                       onSearchCase={onSearchCase}
                       onNavigateToTab={onNavigateToTab}
                       onOpenCaseFile={onOpenCaseFile}
-                      onOpenDetentionModal={(c) => setDetentionModalCase(c)}
+                      onOpenDetentionModal={(c, initDate) => {
+                        setDetentionModalCase(c);
+                        setDetentionModalInitialDate(initDate);
+                      }}
                     />
                   ))}
                 </div>
@@ -2476,7 +2485,10 @@ export default function AgendaPanel({
                     onSearchCase={onSearchCase}
                     onNavigateToTab={onNavigateToTab}
                     onOpenCaseFile={onOpenCaseFile}
-                    onOpenDetentionModal={(c) => setDetentionModalCase(c)}
+                    onOpenDetentionModal={(c, initDate) => {
+                      setDetentionModalCase(c);
+                      setDetentionModalInitialDate(initDate);
+                    }}
                   />
                 </div>
               </div>
