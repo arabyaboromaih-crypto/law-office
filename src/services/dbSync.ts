@@ -263,12 +263,22 @@ export async function processRentCollectionTransaction(params: {
       // Step 2: Atomic updates for re_dues & creations for re_collections
       for (const updateItem of dueUpdates) {
         const dueRef = doc(db, "re_dues", updateItem.id);
-        transaction.set(dueRef, updateItem.data, { merge: true });
+        // Clean undefined fields
+        const cleanedDueData: Record<string, any> = {};
+        for (const [k, v] of Object.entries(updateItem.data || {})) {
+          if (v !== undefined) cleanedDueData[k] = v;
+        }
+        transaction.set(dueRef, cleanedDueData, { merge: true });
       }
 
       for (const receiptItem of receiptsToCreate) {
         const receiptRef = doc(db, "re_collections", receiptItem.id);
-        transaction.set(receiptRef, { id: receiptItem.id, ...receiptItem.data });
+        // Clean undefined fields
+        const cleanedReceiptData: Record<string, any> = {};
+        for (const [k, v] of Object.entries(receiptItem.data || {})) {
+          if (v !== undefined) cleanedReceiptData[k] = v;
+        }
+        transaction.set(receiptRef, { id: receiptItem.id, ...cleanedReceiptData });
       }
     });
   } catch (error: any) {
@@ -276,7 +286,8 @@ export async function processRentCollectionTransaction(params: {
       const monthStr = error.message.split(":")[1];
       throw new Error(`🚫 تم منع تكرار التحصيل: شهر (${monthStr}) تم تحصيله بالفعل في قاعدة البيانات.`);
     }
-    handleFirestoreError(error, OperationType.WRITE, "re_dues/re_collections");
+    console.error("Rent collection transaction error:", error);
+    throw new Error(error?.message || "تعذر حفظ عملية التحصيل وسند القبض في قاعدة البيانات السحابية. يرجى المحاولة مرة أخرى.");
   }
 }
 

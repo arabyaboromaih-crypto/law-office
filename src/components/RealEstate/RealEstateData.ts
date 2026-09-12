@@ -125,8 +125,23 @@ export function getDueCollectionStatus(
     }
   }
 
-  // 2. If NO active saved collection receipt exists for this tenant, unit, and month:
-  // It is NEVER collected or prepaid regardless of any stale state or cached field.
+  // 2. Direct verified status from re_dues document (immediate local reactivity)
+  if (
+    due.status === 'collected' ||
+    due.collectionStatus === 'collected' ||
+    due.collectionStatus === 'prepaid' ||
+    due.status === 'paid_out' ||
+    (due.collectedAmount && due.collectedAmount > 0) ||
+    !!due.receiptNumber
+  ) {
+    if (dueMonthYear && dueMonthYear > currentMonthISO) {
+      return 'prepaid';
+    }
+    return 'collected';
+  }
+
+  // 3. If NO active saved collection receipt or collected status exists for this tenant, unit, and month:
+  // It is evaluated based on due date.
   if ((due.dueDate && due.dueDate <= todayISO) || (dueMonthYear && dueMonthYear <= currentMonthISO)) {
     return 'overdue';
   }

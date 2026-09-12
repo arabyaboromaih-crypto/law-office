@@ -1630,6 +1630,8 @@ export default function RealEstatePanel({ currentUser }: RealEstatePanelProps) {
       const allocatedAmount = totalDueRentSum > 0 ? Math.round((due.rentAmount / totalDueRentSum) * totalCollectedAmount) : due.rentAmount;
       const isFutureMonth = due.forMonthYear && due.forMonthYear > currentMonthISO;
 
+      const receiptId = `coll_${due.id}_${Date.now()}`;
+
       dueUpdates.push({
         id: due.id,
         data: {
@@ -1641,12 +1643,13 @@ export default function RealEstatePanel({ currentUser }: RealEstatePanelProps) {
           paidDate: formData.paidDate,
           paymentMethod: formData.paymentMethod as any,
           receiptNumber: receiptNo,
+          collectionReceiptId: receiptId,
           collectedBy: currentUser.fullName,
-          collectionNotes: formData.notes || (isFutureMonth ? 'دفع مسبق' : '')
+          collectionNotes: formData.notes || (isFutureMonth ? 'دفع مسبق' : ''),
+          updatedAt: new Date().toISOString()
         }
       });
 
-      const receiptId = `coll_${due.id}_${Date.now()}`;
       receiptsToCreate.push({
         id: receiptId,
         data: {
@@ -1660,6 +1663,7 @@ export default function RealEstatePanel({ currentUser }: RealEstatePanelProps) {
           paymentMethod: formData.paymentMethod as any,
           collectedBy: currentUser.fullName,
           dueId: due.id,
+          status: 'collected',
           notes: formData.notes || (monthsCount > 1 ? `تحصيل إيجار شهر ${due.monthNameAr} ضمن دفعة (${monthsCount} أشهر)` : `تحصيل إيجار شهر ${due.monthNameAr}`),
           createdAt: new Date().toISOString()
         }

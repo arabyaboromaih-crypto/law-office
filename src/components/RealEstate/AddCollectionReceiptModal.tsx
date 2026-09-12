@@ -16,6 +16,7 @@ import {
   getPropertyCommissionSettings,
   calculateCommissionFromSettings
 } from './RealEstateData';
+import { generateCollectionReceiptVoucherHTML, printReceiptDirectly } from './TenantCollectionReceiptsModal';
 
 export function formatMonthYearAr(monthKey?: string): string {
   if (!monthKey || typeof monthKey !== 'string') return '';
@@ -92,6 +93,8 @@ export default function AddCollectionReceiptModal({
 
   // UI Feedback State
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [submittingAction, setSubmittingAction] = useState<'collect' | 'save_receipt' | null>(null);
+  const isSubmittingRef = React.useRef(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -492,16 +495,19 @@ export default function AddCollectionReceiptModal({
     setPrepayInlineError(null);
   };
 
-  // Handle Form Submit
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Handle Form Submit (handles both 'collect' and 'save_receipt')
+  const handleSubmit = async (actionType: 'collect' | 'save_receipt' = 'collect', e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+
+    // 0. Strict duplicate prevention: lock immediately against rapid multi-clicks
+    if (isSaving || isSubmittingRef.current) return;
 
     // 1. Strict Validation: Check if single or all selected dues already have a collection receipt
     if (selectedDues.length === 1 && hasAlreadyPaidSelected) {
       const paidItem = alreadyPaidDues[0];
       const mName = paidItem.due.monthNameAr || formatMonthYearAr(paidItem.due.forMonthYear);
       const rNum = paidItem.receipt.receiptNumber ? ` (رقم السند: ${paidItem.receipt.receiptNumber})` : '';
-      setErrorMessage(`هذا الشهر (${mName}) مسدد بالفعل وله سند تحصيل محفوظ${rNum}. لا يمكن حفظ دفعة مكررة.`);
+      setErrorMessage(`هذا الشهر (${mName}) مسدد بالفعل وله سند تحصيل محفوظ${rNum}. لا يمكن تكرار التحصيل.`);
       return;
     }
 
@@ -516,33 +522,87 @@ export default function AddCollectionReceiptModal({
     }
 
     setErrorMessage(null);
+    isSubmittingRef.current = true;
     setIsSaving(true);
+    setSubmittingAction(actionType);
+
+    const generatedReceiptNo = receiptNumber.trim() || `REC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
     try {
+      // Execute the actual collection and Firestore persistence
       await onSaveReceipt({
         duesToProcess: payableDues,
         collectForm: {
           paidDate,
           collectedAmount: numericCollected,
           paymentMethod,
-          receiptNumber: receiptNumber.trim() || `REC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+          receiptNumber: generatedReceiptNo,
           notes
         }
       });
 
-      // Show success toast
-      setSuccessToast(
-        payableDues.length === 1
-          ? `تم حفظ سند التحصيل لشهر ${payableDues[0].monthNameAr || formatMonthYearAr(payableDues[0].forMonthYear)} بنجاح`
-          : `تم حفظ سند التحصيل لـ (${payableDues.length}) أشهر بنجاح`
-      );
+      // Show EXACT notification required by user: «تم التحصيل بنجاح وحفظ السند»
+      setSuccessToast('تم التحصيل بنجاح وحفظ السند');
+
+      // If user chose "حفظ السند", generate and print/preview the receipt directly
+      if (actionType === 'save_receipt') {
+        try {
+          const tenantForReceipt = currentTenant || (primaryInitialDue ? {
+            id: primaryInitialDue.tenantId,
+            fullName: primaryInitialDue.tenantName,
+            nationalId: '',
+            phone: '',
+            unitId: primaryInitialDue.unitId,
+            propertyId: primaryInitialDue.propertyId,
+            rentAmount: primaryInitialDue.rentAmount,
+            contractStartDate: '',
+            contractEndDate: '',
+            status: 'active' as const,
+            createdAt: ''
+          } : null);
+
+          if (tenantForReceipt) {
+            const receiptHtml = generateCollectionReceiptVoucherHTML({
+              receipt: {
+                id: `coll_${Date.now()}`,
+                receiptNumber: generatedReceiptNo,
+                tenantId: tenantForReceipt.id,
+                unitId: currentUnit?.id || primaryInitialDue.unitId,
+                propertyId: currentProperty?.id || primaryInitialDue.propertyId,
+                amountPaid: numericCollected,
+                forMonthYear: payableDues.map(d => d.monthNameAr || formatMonthYearAr(d.forMonthYear)).join(' + '),
+                paymentDate: paidDate,
+                paymentMethod: paymentMethod as any,
+                collectedBy: currentUser?.fullName || 'الإدارة المالية',
+                notes: notes || (payableDues.length > 1 ? `تحصيل إيجار (${payableDues.length}) أشهر` : `تحصيل إيجار شهر ${payableDues[0]?.monthNameAr || ''}`),
+                status: 'collected',
+                createdAt: new Date().toISOString()
+              },
+              tenant: tenantForReceipt,
+              property: currentProperty || undefined,
+              unit: currentUnit || undefined,
+              owner: currentOwner || undefined,
+              currentUser
+            });
+            printReceiptDirectly(receiptHtml);
+          }
+        } catch (printErr) {
+          console.warn('Direct print notice:', printErr);
+        }
+      }
+
+      // Close modal smoothly after user sees the clear confirmation
       setTimeout(() => {
         setIsSaving(false);
+        isSubmittingRef.current = false;
+        setSubmittingAction(null);
         onClose();
-      }, 1200);
+      }, 1500);
     } catch (err: any) {
       setIsSaving(false);
-      setErrorMessage(err?.message || 'حدث خطأ أثناء حفظ سند التحصيل. يرجى المحاولة مرة أخرى.');
+      isSubmittingRef.current = false;
+      setSubmittingAction(null);
+      setErrorMessage(err?.message || 'حدث خطأ أثناء تنفيذ التحصيل وحفظ السند في السحابة. يرجى المحاولة مرة أخرى.');
     }
   };
 
@@ -617,7 +677,7 @@ export default function AddCollectionReceiptModal({
           </div>
 
           {/* FORM BODY - SCROLLABLE (Smooth on Laptop & Mobile) */}
-          <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+          <form onSubmit={(e) => handleSubmit('collect', e)} className="flex flex-col flex-1 overflow-hidden">
             <div className="p-4 sm:p-6 md:p-8 overflow-y-auto overscroll-contain touch-pan-y space-y-6 sm:space-y-7 flex-1 custom-scrollbar">
 
               {/* ERROR MESSAGE BANNER */}
@@ -1315,49 +1375,89 @@ export default function AddCollectionReceiptModal({
                 <span>سيتم حفظ سند التحصيل وتحديث السجلات والتقارير المالية فوراً</span>
               </div>
 
-              <div className="flex items-center gap-3 mr-auto">
+              <div className="flex items-center gap-2.5 sm:gap-3 mr-auto flex-wrap sm:flex-nowrap">
                 <button
                   type="button"
                   onClick={onClose}
                   disabled={isSaving}
-                  className="px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl border border-white/15 text-[#CAD2DF] hover:text-white hover:bg-white/5 text-xs sm:text-sm font-bold transition-all cursor-pointer"
+                  className="px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl border border-white/15 text-[#CAD2DF] hover:text-white hover:bg-white/5 text-xs sm:text-sm font-bold transition-all cursor-pointer disabled:opacity-50"
                   id="btn-cancel-collection"
                 >
                   إلغاء
                 </button>
 
+                {/* زر 1: التحصيل المباشر وتحديث الأرصدة والمتبقي في النظام */}
                 <button
-                  type="submit"
+                  type="button"
+                  onClick={() => handleSubmit('collect')}
                   disabled={isSaving || selectedDues.length === 0 || payableDues.length === 0 || Number(collectedAmount) <= 0}
-                  className="px-6 sm:px-9 py-2.5 sm:py-3 rounded-xl bg-gradient-to-r from-[#D4A84F] to-[#C3973E] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-black text-xs sm:text-sm shadow-lg shadow-[#D4A84F]/25 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+                  className="px-5 sm:px-7 py-2.5 sm:py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black text-xs sm:text-sm shadow-lg shadow-emerald-950/40 transition-all flex items-center gap-2 cursor-pointer active:scale-95 border border-emerald-400/30"
+                  id="btn-execute-collection"
+                  title={
+                    selectedDues.length === 1 && hasAlreadyPaidSelected
+                      ? 'هذا الشهر مسدد بالفعل وله سند تحصيل محفوظ'
+                      : payableDues.length === 0 && selectedDues.length > 0
+                        ? 'جميع الأشهر المحددة مسددة بالفعل'
+                        : 'تنفيذ التحصيل وتحديث رصيد المستأجر والمتبقي فوراً في النظام'
+                  }
+                >
+                  {isSaving && submittingAction === 'collect' ? (
+                    <>
+                      <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin text-white" />
+                      <span>جاري التحصيل وتحديث الرصيد...</span>
+                    </>
+                  ) : selectedDues.length === 1 && hasAlreadyPaidSelected ? (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                      <span>مسدد بالفعل</span>
+                    </>
+                  ) : payableDues.length === 0 && selectedDues.length > 0 ? (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                      <span>الأشهر مسددة بالفعل</span>
+                    </>
+                  ) : (
+                    <>
+                      <Coins className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                      <span>التحصيل ({payableDues.length > 0 ? payableDues.length : 0} شهر)</span>
+                    </>
+                  )}
+                </button>
+
+                {/* زر 2: حفظ السند والتحصيل الفعلي في Firestore مع الطباعة الفورية */}
+                <button
+                  type="button"
+                  onClick={() => handleSubmit('save_receipt')}
+                  disabled={isSaving || selectedDues.length === 0 || payableDues.length === 0 || Number(collectedAmount) <= 0}
+                  className="px-5 sm:px-7 py-2.5 sm:py-3 rounded-xl bg-gradient-to-r from-[#D4A84F] to-[#C3973E] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-black text-xs sm:text-sm shadow-lg shadow-[#D4A84F]/25 transition-all flex items-center gap-2 cursor-pointer active:scale-95 border border-[#D4A84F]/40"
                   id="btn-save-collection-receipt"
                   title={
                     selectedDues.length === 1 && hasAlreadyPaidSelected
-                      ? 'هذا الشهر مسدد بالفعل وله سند تحصيل'
+                      ? 'هذا الشهر مسدد بالفعل وله سند تحصيل محفوظ'
                       : payableDues.length === 0 && selectedDues.length > 0
-                        ? 'جميع الأشهر المحددة مسددة بالفعل ولها سندات تحصيل'
-                        : 'حفظ سند التحصيل'
+                        ? 'جميع الأشهر المحددة مسددة بالفعل'
+                        : 'تسجيل عملية التحصيل وسند الدفع في Firestore وتحديث الرصيد وطباعة السند'
                   }
                 >
-                  {isSaving ? (
+                  {isSaving && submittingAction === 'save_receipt' ? (
                     <>
                       <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin text-slate-950" />
-                      <span>جاري حفظ سند التحصيل...</span>
+                      <span>جاري حفظ السند والتحصيل...</span>
                     </>
                   ) : selectedDues.length === 1 && hasAlreadyPaidSelected ? (
                     <>
                       <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-slate-950" />
-                      <span>الشهر مسدد بالفعل وله سند تحصيل</span>
+                      <span>مسدد وله سند</span>
                     </>
                   ) : payableDues.length === 0 && selectedDues.length > 0 ? (
                     <>
                       <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-slate-950" />
-                      <span>الأشهر المحددة مسددة بالفعل</span>
+                      <span>الأشهر مسددة</span>
                     </>
                   ) : (
                     <>
-                      <Save className="w-4 h-4 sm:w-5 sm:h-5 text-slate-950" />
-                      <span>حفظ سند التحصيل ({payableDues.length > 0 ? payableDues.length : 0} شهر)</span>
+                      <Receipt className="w-4 h-4 sm:w-5 sm:h-5 text-slate-950" />
+                      <span>حفظ السند</span>
                     </>
                   )}
                 </button>
