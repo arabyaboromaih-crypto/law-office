@@ -3520,8 +3520,9 @@ export default function RealEstateFinancials({
                       <Receipt className="w-3.5 h-3.5 stroke-[2.5]" />
                       <span>سندات التحصيل</span>
                       {selectedTenantId !== 'all' && (() => {
+                        const selectedTenantObj = tenants.find(t => t.id === selectedTenantId);
                         const count = (collections || []).filter(
-                          c => c && c.tenantId === selectedTenantId && c.status !== 'reverted' && !c.isCancelled
+                          c => c && (c.tenantId === selectedTenantId || (selectedTenantObj && c.tenantName && c.tenantName === selectedTenantObj.fullName)) && c.status !== 'reverted' && !c.isCancelled
                         ).length;
                         return count > 0 ? (
                           <span className="px-1.5 py-0.2 bg-slate-950 text-[#D4A84F] text-[10px] rounded-full font-mono font-bold">
@@ -3835,7 +3836,7 @@ export default function RealEstateFinancials({
                                       <span>سندات التحصيل</span>
                                       {(() => {
                                         const count = (collections || []).filter(
-                                          c => c && c.tenantId === tenant.id && c.status !== 'reverted' && !c.isCancelled
+                                          c => c && (c.tenantId === tenant.id || (c.tenantName && c.tenantName === tenant.fullName)) && c.status !== 'reverted' && !c.isCancelled
                                         ).length;
                                         return count > 0 ? (
                                           <span className="bg-[#D4A84F]/20 text-[#D4A84F] text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-full border border-[#D4A84F]/40">
@@ -8444,6 +8445,7 @@ export default function RealEstateFinancials({
           isOpen={!!tenantReceiptsModalTenant}
           onClose={() => setTenantReceiptsModalTenant(null)}
           tenant={tenantReceiptsModalTenant}
+          collections={collections}
           receipts={collections.filter(c => c.tenantId === tenantReceiptsModalTenant.id)}
           dues={validDues.filter(d => d.tenantId === tenantReceiptsModalTenant.id)}
           units={units}

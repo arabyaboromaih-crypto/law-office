@@ -686,8 +686,13 @@ export interface ReCollectionReceipt {
   id: string;
   receiptNumber: string;
   tenantId: string;
+  tenantName?: string;
   unitId: string;
+  unitNumber?: string;
   propertyId: string;
+  propertyName?: string;
+  ownerId?: string;
+  ownerName?: string;
   amountPaid: number;
   forMonthYear: string;
   paymentDate: string;

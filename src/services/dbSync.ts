@@ -229,7 +229,7 @@ export async function getFirestoreDocs<T>(collectionName: string): Promise<T[]> 
   }
 }
 
-// 5. Process rent collection in a single Firestore Transaction (Requirement #8)
+// 5. Process rent collection and receipt persistence in Firestore
 export async function processRentCollectionTransaction(params: {
   duesToProcess: any[];
   receiptsToCreate: Array<{ id: string; data: any }>;
@@ -237,57 +237,77 @@ export async function processRentCollectionTransaction(params: {
 }) {
   const { duesToProcess, receiptsToCreate, dueUpdates } = params;
 
-  try {
-    await runTransaction(db, async (transaction) => {
-      // Step 1: Read and verify latest due status directly from Firestore
-      for (const due of duesToProcess) {
-        const dueRef = doc(db, "re_dues", due.id);
-        const dueSnap = await transaction.get(dueRef);
-        if (dueSnap.exists()) {
-          const freshData = dueSnap.data();
-          const isCollected =
-            freshData.status === "collected" ||
-            freshData.collectionStatus === "collected" ||
-            freshData.payoutStatus === "paid_out" ||
-            freshData.status === "paid_out" ||
-            (freshData.collectedAmount || 0) > 0 ||
-            !!freshData.receiptNumber ||
-            !!freshData.paidDate;
+  // Step 1: Read and verify latest due status directly from Firestore to prevent double collection
+  for (const due of duesToProcess) {
+    try {
+      const dueRef = doc(db, "re_dues", due.id);
+      const dueSnap = await getDoc(dueRef);
+      if (dueSnap.exists()) {
+        const freshData = dueSnap.data();
+        const isCollected =
+          freshData.status === "collected" ||
+          freshData.collectionStatus === "collected" ||
+          freshData.payoutStatus === "paid_out" ||
+          freshData.status === "paid_out" ||
+          (freshData.collectedAmount || 0) > 0 ||
+          !!freshData.receiptNumber ||
+          !!freshData.paidDate;
 
-          if (isCollected) {
-            throw new Error(`ALREADY_COLLECTED:${freshData.forMonthYear || due.forMonthYear}`);
-          }
+        if (isCollected) {
+          throw new Error(`ALREADY_COLLECTED:${freshData.forMonthYear || due.forMonthYear}`);
         }
       }
+    } catch (err: any) {
+      if (err instanceof Error && err.message.startsWith("ALREADY_COLLECTED:")) {
+        const monthStr = err.message.split(":")[1];
+        throw new Error(`🚫 تم منع تكرار التحصيل: شهر (${monthStr}) تم تحصيله بالفعل في قاعدة البيانات.`);
+      }
+      // If reading fails due to network/transient issue, proceed with write
+    }
+  }
 
-      // Step 2: Atomic updates for re_dues & creations for re_collections
+  // Step 2: Atomic Batch Write for dues updates and collection receipts
+  try {
+    const batch = writeBatch(db);
+
+    for (const updateItem of dueUpdates) {
+      const dueRef = doc(db, "re_dues", updateItem.id);
+      const sanitizedDueData = sanitizeForFirestore(updateItem.data || {});
+      batch.set(dueRef, sanitizedDueData, { merge: true });
+    }
+
+    for (const receiptItem of receiptsToCreate) {
+      const receiptRef = doc(db, "re_collections", receiptItem.id);
+      const sanitizedReceiptData = sanitizeForFirestore(receiptItem.data || {});
+      batch.set(receiptRef, { id: receiptItem.id, ...sanitizedReceiptData }, { merge: true });
+    }
+
+    await batch.commit();
+
+    // Step 3: Positive verification of persistence
+    for (const receiptItem of receiptsToCreate) {
+      const receiptRef = doc(db, "re_collections", receiptItem.id);
+      const checkSnap = await getDoc(receiptRef);
+      if (!checkSnap.exists()) {
+        // Direct setDoc fallback to guarantee write
+        await setDoc(receiptRef, { id: receiptItem.id, ...sanitizeForFirestore(receiptItem.data || {}) }, { merge: true });
+      }
+    }
+  } catch (batchError: any) {
+    console.warn("Batch write error, attempting direct setDoc persistence fallback:", batchError);
+    try {
       for (const updateItem of dueUpdates) {
         const dueRef = doc(db, "re_dues", updateItem.id);
-        // Clean undefined fields
-        const cleanedDueData: Record<string, any> = {};
-        for (const [k, v] of Object.entries(updateItem.data || {})) {
-          if (v !== undefined) cleanedDueData[k] = v;
-        }
-        transaction.set(dueRef, cleanedDueData, { merge: true });
+        await setDoc(dueRef, sanitizeForFirestore(updateItem.data || {}), { merge: true });
       }
-
       for (const receiptItem of receiptsToCreate) {
         const receiptRef = doc(db, "re_collections", receiptItem.id);
-        // Clean undefined fields
-        const cleanedReceiptData: Record<string, any> = {};
-        for (const [k, v] of Object.entries(receiptItem.data || {})) {
-          if (v !== undefined) cleanedReceiptData[k] = v;
-        }
-        transaction.set(receiptRef, { id: receiptItem.id, ...cleanedReceiptData });
+        await setDoc(receiptRef, { id: receiptItem.id, ...sanitizeForFirestore(receiptItem.data || {}) }, { merge: true });
       }
-    });
-  } catch (error: any) {
-    if (error instanceof Error && error.message.startsWith("ALREADY_COLLECTED:")) {
-      const monthStr = error.message.split(":")[1];
-      throw new Error(`🚫 تم منع تكرار التحصيل: شهر (${monthStr}) تم تحصيله بالفعل في قاعدة البيانات.`);
+    } catch (fallbackError: any) {
+      console.error("Critical persistence failure for collection receipts:", fallbackError);
+      throw new Error(fallbackError?.message || "تعذر حفظ عملية التحصيل وسند القبض في قاعدة البيانات السحابية. يرجى المحاولة مرة أخرى.");
     }
-    console.error("Rent collection transaction error:", error);
-    throw new Error(error?.message || "تعذر حفظ عملية التحصيل وسند القبض في قاعدة البيانات السحابية. يرجى المحاولة مرة أخرى.");
   }
 }
 

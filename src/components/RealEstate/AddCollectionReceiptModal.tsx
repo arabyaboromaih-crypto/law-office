@@ -541,8 +541,12 @@ export default function AddCollectionReceiptModal({
         }
       });
 
-      // Show EXACT notification required by user: «تم التحصيل بنجاح وحفظ السند»
-      setSuccessToast('تم التحصيل بنجاح وحفظ السند');
+      // Show EXACT notification required by user
+      if (actionType === 'save_receipt') {
+        setSuccessToast('تم حفظ سند التحصيل بنجاح');
+      } else {
+        setSuccessToast('تم التحصيل بنجاح وحفظ السند');
+      }
 
       // If user chose "حفظ السند", generate and print/preview the receipt directly
       if (actionType === 'save_receipt') {

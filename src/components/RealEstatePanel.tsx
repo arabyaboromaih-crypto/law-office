@@ -1650,13 +1650,28 @@ export default function RealEstatePanel({ currentUser }: RealEstatePanelProps) {
         }
       });
 
+      const matchedTenant = tenants.find(t => t.id === due.tenantId);
+      const tenantName = due.tenantName || matchedTenant?.fullName || '';
+      const matchedUnit = units.find(u => u.id === due.unitId);
+      const unitNumber = matchedUnit?.unitNumber || '';
+      const matchedProperty = properties.find(p => p.id === due.propertyId);
+      const propertyName = matchedProperty?.name || '';
+      const ownerId = matchedProperty?.ownerId || matchedUnit?.ownerId || '';
+      const matchedOwner = owners.find(o => o.id === ownerId);
+      const ownerName = matchedOwner?.name || '';
+
       receiptsToCreate.push({
         id: receiptId,
         data: {
           receiptNumber: receiptNo,
           tenantId: due.tenantId,
+          tenantName,
           unitId: due.unitId,
+          unitNumber,
           propertyId: due.propertyId,
+          propertyName,
+          ownerId,
+          ownerName,
           amountPaid: allocatedAmount,
           forMonthYear: due.forMonthYear,
           paymentDate: formData.paidDate,
@@ -1699,6 +1714,15 @@ export default function RealEstatePanel({ currentUser }: RealEstatePanelProps) {
       ...prevCollections,
       ...receiptsToCreate.map(r => ({ id: r.id, ...r.data }))
     ]);
+
+    // Show persistent success notification
+    setSaveSuccessNotification({
+      title: 'تم الحفظ بنجاح',
+      message: 'تم حفظ سند التحصيل بنجاح'
+    });
+    setTimeout(() => {
+      setSaveSuccessNotification(null);
+    }, 4500);
 
     // Log Action
     const monthNames = duesToProcess.map(d => d.monthNameAr).join('، ');

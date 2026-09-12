@@ -1,20 +1,24 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Receipt, X, Search, Calendar, DollarSign, Printer, 
   CheckCircle, FileText, User, Building, Phone, Clock,
-  ArrowRight, ShieldCheck, AlertCircle, Sparkles, Filter, Download
+  ArrowRight, ShieldCheck, AlertCircle, Sparkles, Filter, Download, Loader2
 } from 'lucide-react';
-import { ReTenant, ReProperty, ReUnit, ReOwner, ReCollectionReceipt, User as AuthUser } from '../../types';
+import { ReTenant, ReProperty, ReUnit, ReOwner, ReCollectionReceipt, ReRentDue, User as AuthUser } from '../../types';
+import { getFirestoreDocs } from '../../services/dbSync';
 
 interface TenantCollectionReceiptsModalProps {
   isOpen: boolean;
   onClose: () => void;
   tenant: ReTenant | null;
-  collections: ReCollectionReceipt[];
-  properties: ReProperty[];
-  units: ReUnit[];
-  owners: ReOwner[];
+  collections?: ReCollectionReceipt[];
+  receipts?: ReCollectionReceipt[];
+  dues?: ReRentDue[];
+  properties?: ReProperty[];
+  units?: ReUnit[];
+  owners?: ReOwner[];
+  onDeleteReceipt?: (id: string) => void;
   currentUser?: AuthUser;
 }
 
@@ -292,15 +296,40 @@ export const TenantCollectionReceiptsModal: React.FC<TenantCollectionReceiptsMod
   onClose,
   tenant,
   collections = [],
+  receipts = [],
+  dues = [],
   properties = [],
   units = [],
   owners = [],
+  onDeleteReceipt,
   currentUser
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedYearFilter, setSelectedYearFilter] = useState<string>('all');
   const [selectedMethodFilter, setSelectedMethodFilter] = useState<string>('all');
   const [previewReceipt, setPreviewReceipt] = useState<ReCollectionReceipt | null>(null);
+  const [dbReceipts, setDbReceipts] = useState<ReCollectionReceipt[]>([]);
+  const [isLoadingReceipts, setIsLoadingReceipts] = useState<boolean>(false);
+
+  // Directly fetch latest collection receipts from Firestore when modal is open
+  useEffect(() => {
+    if (!isOpen || !tenant) return;
+    let isMounted = true;
+    setIsLoadingReceipts(true);
+    getFirestoreDocs<ReCollectionReceipt>('re_collections')
+      .then(docs => {
+        if (isMounted && Array.isArray(docs)) {
+          setDbReceipts(docs);
+        }
+      })
+      .catch(err => {
+        console.error('Error fetching collection receipts from Firestore:', err);
+      })
+      .finally(() => {
+        if (isMounted) setIsLoadingReceipts(false);
+      });
+    return () => { isMounted = false; };
+  }, [isOpen, tenant?.id]);
 
   // Resolved tenant details
   const property = useMemo(() => {
@@ -320,15 +349,30 @@ export const TenantCollectionReceiptsModal: React.FC<TenantCollectionReceiptsMod
     return owners.find(o => o.id === property.ownerId) || null;
   }, [property, owners]);
 
-  // Strictly filter receipts for THIS tenant only using tenantId and ignoring cancelled/reverted ones
+  // Strictly filter receipts for THIS tenant only using tenantId, tenantName, or matching dues
   const tenantReceipts = useMemo(() => {
     if (!tenant) return [];
-    return collections
+
+    const source = (collections && collections.length > 0) ? collections : (receipts || []);
+    const map = new Map<string, ReCollectionReceipt>();
+
+    // 1. Add from props
+    source.forEach(c => {
+      if (c && c.id) map.set(c.id, c);
+    });
+
+    // 2. Add from direct Firestore fetch
+    dbReceipts.forEach(c => {
+      if (c && c.id) map.set(c.id, c);
+    });
+
+    return Array.from(map.values())
       .filter(c => {
         if (!c || c.isCancelled || c.status === 'reverted') return false;
-        // Strict match on tenantId or matching tenant name if ID is missing
+        // Strict match on tenantId or matching tenant name
         return (
           c.tenantId === tenant.id ||
+          (c.tenantName && tenant.fullName && c.tenantName.trim().toLowerCase() === tenant.fullName.trim().toLowerCase()) ||
           (!c.tenantId && tenant.fullName && (c.collectedBy?.toLowerCase() === tenant.fullName.toLowerCase()))
         );
       })
@@ -337,7 +381,7 @@ export const TenantCollectionReceiptsModal: React.FC<TenantCollectionReceiptsMod
         const dateB = b.paymentDate || b.createdAt || '';
         return dateB.localeCompare(dateA); // Newest first
       });
-  }, [collections, tenant]);
+  }, [collections, receipts, dbReceipts, tenant]);
 
   // Available Years
   const availableYears = useMemo(() => {
