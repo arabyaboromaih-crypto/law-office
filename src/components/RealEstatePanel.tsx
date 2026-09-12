@@ -1633,6 +1633,7 @@ export default function RealEstatePanel({ currentUser }: RealEstatePanelProps) {
       dueUpdates.push({
         id: due.id,
         data: {
+          ...due,
           status: isPayoutDone ? 'paid_out' : 'collected',
           collectionStatus: isFutureMonth ? 'prepaid' : 'collected',
           isPrepaid: isFutureMonth ? true : false,
@@ -1658,6 +1659,7 @@ export default function RealEstatePanel({ currentUser }: RealEstatePanelProps) {
           paymentDate: formData.paidDate,
           paymentMethod: formData.paymentMethod as any,
           collectedBy: currentUser.fullName,
+          dueId: due.id,
           notes: formData.notes || (monthsCount > 1 ? `تحصيل إيجار شهر ${due.monthNameAr} ضمن دفعة (${monthsCount} أشهر)` : `تحصيل إيجار شهر ${due.monthNameAr}`),
           createdAt: new Date().toISOString()
         }
@@ -1672,16 +1674,22 @@ export default function RealEstatePanel({ currentUser }: RealEstatePanelProps) {
     });
 
     // Immediately update React local state for real-time UI reactivity
-    setDues(prevDues => prevDues.map(d => {
-      const updateObj = dueUpdates.find(u => u.id === d.id);
-      if (updateObj) {
-        return {
-          ...d,
-          ...updateObj.data
-        };
-      }
-      return d;
-    }));
+    setDues(prevDues => {
+      const updated = prevDues.map(d => {
+        const updateObj = dueUpdates.find(u => u.id === d.id);
+        if (updateObj) {
+          return {
+            ...d,
+            ...updateObj.data
+          };
+        }
+        return d;
+      });
+      const newlyAddedDues = dueUpdates
+        .filter(u => !prevDues.some(d => d.id === u.id))
+        .map(u => u.data as ReRentDue);
+      return [...updated, ...newlyAddedDues];
+    });
 
     setCollections(prevCollections => [
       ...prevCollections,
