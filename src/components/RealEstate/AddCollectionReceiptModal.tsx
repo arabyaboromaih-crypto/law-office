@@ -125,8 +125,53 @@ export default function AddCollectionReceiptModal({
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [submittingAction, setSubmittingAction] = useState<'collect' | 'save_receipt' | null>(null);
   const isSubmittingRef = React.useRef(false);
+  const modalBodyRef = React.useRef<HTMLDivElement>(null);
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Global keyboard navigation for modal scrolling (Arrow keys, PageUp, PageDown, Home, End, Escape)
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (!isSaving && !isSubmittingRef.current) {
+          onClose();
+        }
+        return;
+      }
+
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') {
+        return;
+      }
+
+      if (modalBodyRef.current) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          modalBodyRef.current.scrollBy({ top: 75, behavior: 'smooth' });
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          modalBodyRef.current.scrollBy({ top: -75, behavior: 'smooth' });
+        } else if (e.key === 'PageDown' || (e.key === ' ' && !e.shiftKey)) {
+          e.preventDefault();
+          modalBodyRef.current.scrollBy({ top: 280, behavior: 'smooth' });
+        } else if (e.key === 'PageUp' || (e.key === ' ' && e.shiftKey)) {
+          e.preventDefault();
+          modalBodyRef.current.scrollBy({ top: -280, behavior: 'smooth' });
+        } else if (e.key === 'Home') {
+          e.preventDefault();
+          modalBodyRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+        } else if (e.key === 'End') {
+          e.preventDefault();
+          modalBodyRef.current.scrollTo({ top: modalBodyRef.current.scrollHeight, behavior: 'smooth' });
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [isOpen, isSaving, onClose]);
 
   // PREPAYMENT SECTION STATE
   const [addedPrepaidDues, setAddedPrepaidDues] = useState<ReRentDue[]>([]);
@@ -1103,16 +1148,21 @@ export default function AddCollectionReceiptModal({
   return (
     <AnimatePresence>
       <div 
-        className="fixed inset-0 z-[120] bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-y-auto"
+        className="fixed inset-0 z-[120] bg-slate-950/85 backdrop-blur-md flex items-start justify-center p-2 sm:p-3 md:p-4 pt-1 sm:pt-2 md:pt-2 lg:pt-2 overflow-y-auto overscroll-contain"
         dir="rtl"
         id="add-collection-receipt-overlay"
+        onClick={(e) => {
+          if (e.target === e.currentTarget && !isSaving && !isSubmittingRef.current) {
+            onClose();
+          }
+        }}
       >
         <motion.div
-          initial={{ scale: 0.96, opacity: 0, y: 15 }}
+          initial={{ scale: 0.98, opacity: 0, y: -10 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}
-          exit={{ scale: 0.96, opacity: 0, y: 15 }}
+          exit={{ scale: 0.98, opacity: 0, y: -10 }}
           transition={{ duration: 0.2 }}
-          className="bg-[#0B1528] border-2 border-[#D4A84F]/40 rounded-2xl sm:rounded-3xl w-full max-w-5xl h-[92vh] max-h-[92vh] flex flex-col shadow-[0_25px_60px_rgba(0,0,0,0.9)] text-right text-[#F8F9FB] relative overflow-hidden my-auto"
+          className="bg-[#0B1528] border-2 border-[#D4A84F]/40 rounded-2xl sm:rounded-3xl w-full max-w-5xl h-[95vh] max-h-[95vh] flex flex-col shadow-[0_25px_60px_rgba(0,0,0,0.9)] text-right text-[#F8F9FB] relative overflow-hidden mt-0 sm:mt-1 mb-2 sm:mb-4"
           id="add-collection-receipt-modal"
         >
           {/* SUCCESS TOAST OVERLAY */}
@@ -1165,7 +1215,15 @@ export default function AddCollectionReceiptModal({
 
           {/* FORM BODY - SCROLLABLE (Smooth on Laptop & Mobile) */}
           <form onSubmit={(e) => handleSubmit('collect', e)} className="flex flex-col flex-1 overflow-hidden">
-            <div className="p-4 sm:p-6 md:p-8 overflow-y-auto overscroll-contain touch-pan-y space-y-6 sm:space-y-7 flex-1 custom-scrollbar">
+            <div 
+              ref={modalBodyRef}
+              tabIndex={0}
+              className="p-4 sm:p-6 md:p-8 overflow-y-auto overscroll-contain touch-pan-y space-y-6 sm:space-y-7 flex-1 custom-scrollbar focus:outline-none scroll-smooth"
+              style={{
+                WebkitOverflowScrolling: 'touch',
+                touchAction: 'pan-y'
+              }}
+            >
 
               {/* ERROR MESSAGE BANNER */}
               {errorMessage && (

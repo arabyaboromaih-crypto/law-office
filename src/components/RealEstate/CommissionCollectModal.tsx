@@ -115,7 +115,51 @@ export default function CommissionCollectModal({
   const [isLocalSaving, setIsLocalSaving] = useState<boolean>(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Keyboard scrolling support (Arrow keys, PageUp, PageDown, Home, End)
+  // Global & local keyboard scrolling support (Arrow keys, PageUp, PageDown, Home, End, Escape)
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (!isSubmitting && !isLocalSaving) {
+          onClose();
+        }
+        return;
+      }
+
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') {
+        return;
+      }
+
+      if (scrollContainerRef.current) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          scrollContainerRef.current.scrollBy({ top: 70, behavior: 'smooth' });
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          scrollContainerRef.current.scrollBy({ top: -70, behavior: 'smooth' });
+        } else if (e.key === 'PageDown' || (e.key === ' ' && !e.shiftKey)) {
+          e.preventDefault();
+          scrollContainerRef.current.scrollBy({ top: 260, behavior: 'smooth' });
+        } else if (e.key === 'PageUp' || (e.key === ' ' && e.shiftKey)) {
+          e.preventDefault();
+          scrollContainerRef.current.scrollBy({ top: -260, behavior: 'smooth' });
+        } else if (e.key === 'Home') {
+          e.preventDefault();
+          scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+        } else if (e.key === 'End') {
+          e.preventDefault();
+          scrollContainerRef.current.scrollTo({ top: scrollContainerRef.current.scrollHeight, behavior: 'smooth' });
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [isOpen, isSubmitting, isLocalSaving, onClose]);
+
+  // Keyboard scrolling support on container element
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
     if (tag === 'input' || tag === 'textarea' || tag === 'select') {

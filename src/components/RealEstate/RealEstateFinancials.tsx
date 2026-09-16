@@ -376,24 +376,30 @@ export default function RealEstateFinancials({
         netOwnerAmount: netOwner
       };
 
-      const cStat = getDueCollectionStatus(dueWithAdj, todayISO, currentMonthISO, collections);
-      if (cStat === 'collected' || cStat === 'prepaid') {
-        const matchingReceipts = getMatchingCollectionReceipts(dueWithAdj, collections);
-        const matchingReceipt = matchingReceipts[0];
-        const totalPaid = matchingReceipts.reduce((sum, r) => sum + (r.amountPaid || 0), 0);
+      const details = getDueCollectionDetails(dueWithAdj, todayISO, currentMonthISO, collections);
+      if (details.isFullyPaid) {
         return {
           ...dueWithAdj,
           status: 'collected' as const,
-          collectionStatus: cStat,
-          collectedAmount: totalPaid || dueWithAdj.rentAmount,
-          paidDate: matchingReceipt?.paymentDate || dueWithAdj.paidDate,
-          receiptNumber: matchingReceipt?.receiptNumber || dueWithAdj.receiptNumber
+          collectionStatus: details.status,
+          collectedAmount: details.totalPaid || dueWithAdj.rentAmount,
+          paidDate: details.paymentDate || dueWithAdj.paidDate,
+          receiptNumber: details.receiptNumber || dueWithAdj.receiptNumber
+        };
+      } else if (details.isPartial) {
+        return {
+          ...dueWithAdj,
+          status: 'pending_collection' as any,
+          collectionStatus: 'partial' as any,
+          collectedAmount: details.totalPaid,
+          paidDate: details.paymentDate || dueWithAdj.paidDate,
+          receiptNumber: details.receiptNumber || dueWithAdj.receiptNumber
         };
       }
       return {
         ...dueWithAdj,
-        status: (cStat === 'overdue' ? 'overdue' : 'pending_collection') as any,
-        collectionStatus: cStat,
+        status: (details.status === 'overdue' ? 'overdue' : 'pending_collection') as any,
+        collectionStatus: details.status,
         collectedAmount: 0,
         paidDate: undefined,
         receiptNumber: undefined
@@ -3220,10 +3226,13 @@ export default function RealEstateFinancials({
               : (tObj.rentAmount || uObj?.rentValue || 0);
 
             const totalCollected = tenantDues
-              .filter(d => isDueCollected(d, todayISO, currentMonthISO, collections))
-              .reduce((sum, d) => sum + (d.collectedAmount || d.rentAmount || 0), 0);
+              .reduce((sum, d) => {
+                const dt = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
+                return sum + dt.totalPaid;
+              }, 0);
 
             const totalRemaining = Math.max(0, totalRequired - totalCollected);
+            const isTargetPartial = totalCollected > 0 && totalRemaining > 0;
 
             return {
               tenant: tObj,
@@ -3235,6 +3244,7 @@ export default function RealEstateFinancials({
               allUncollectedDues,
               pastUncollectedDues,
               targetMonthCollected,
+              isTargetPartial,
               isTargetAdvance,
               rentAmount: totalRequired,
               monthlyContractRent: tObj.rentAmount || uObj?.rentValue || currentMonthDue?.rentAmount || 0,
@@ -3250,12 +3260,14 @@ export default function RealEstateFinancials({
               !isDueCollected(d, todayISO, currentMonthISO, collections)
             ).sort((a, b) => a.forMonthYear.localeCompare(b.forMonthYear));
 
-            const targetMonthCollected = currentMonthDue ? isDueCollected(currentMonthDue, todayISO, currentMonthISO, collections) : false;
+            const currentMonthDetails = currentMonthDue ? getDueCollectionDetails(currentMonthDue, todayISO, currentMonthISO, collections) : null;
+            const targetMonthCollected = currentMonthDetails ? currentMonthDetails.isFullyPaid : false;
+            const isTargetPartial = currentMonthDetails ? currentMonthDetails.isPartial : false;
             const isTargetAdvance = currentMonthDue ? currentMonthDue.forMonthYear > currentMonthISO : (targetMonthYear > currentMonthISO);
 
             const monthRequired = currentMonthDue?.rentAmount || tObj.rentAmount || uObj?.rentValue || 0;
-            const monthCollected = (targetMonthCollected && currentMonthDue) ? (currentMonthDue.collectedAmount || currentMonthDue.rentAmount) : 0;
-            const monthRemaining = Math.max(0, monthRequired - monthCollected);
+            const monthCollected = currentMonthDetails ? currentMonthDetails.totalPaid : 0;
+            const monthRemaining = currentMonthDetails ? currentMonthDetails.remainingAmount : monthRequired;
 
             return {
               tenant: tObj,
@@ -3267,6 +3279,7 @@ export default function RealEstateFinancials({
               allUncollectedDues,
               pastUncollectedDues,
               targetMonthCollected,
+              isTargetPartial,
               isTargetAdvance,
               rentAmount: monthRequired,
               monthlyContractRent: tObj.rentAmount || uObj?.rentValue || currentMonthDue?.rentAmount || 0,
@@ -3700,8 +3713,11 @@ export default function RealEstateFinancials({
                           allUncollectedDues,
                           pastUncollectedDues,
                           targetMonthCollected,
+                          isTargetPartial,
                           isTargetAdvance,
-                          rentAmount
+                          rentAmount,
+                          totalCollected,
+                          totalRemaining
                         } = row;
 
                         const tenantName = tenant.fullName || 'غير محدد';
@@ -3789,6 +3805,13 @@ export default function RealEstateFinancials({
                                 {rentAmount.toLocaleString('ar-EG')}
                               </span>
                               <span className="text-xs text-slate-300 font-bold mr-1">ج.م</span>
+                              {isTargetPartial && (
+                                <div className="text-[10px] font-bold text-amber-300 mt-0.5 font-mono">
+                                  <span>مسدد: {totalCollected.toLocaleString('ar-EG')} ج.م</span>
+                                  <span className="text-slate-400 mx-1">|</span>
+                                  <span className="text-rose-400">متبقي: {totalRemaining.toLocaleString('ar-EG')} ج.م</span>
+                                </div>
+                              )}
                             </td>
 
                             {/* 5. حالة التحصيل */}
@@ -3798,15 +3821,20 @@ export default function RealEstateFinancials({
                                   <CheckCircle className="w-4 h-4" />
                                   <span>{isAllMonths || isAllYears ? 'مُحصّل بالكامل' : 'تم التحصيل'}</span>
                                 </span>
+                              ) : isTargetPartial ? (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black bg-amber-500/25 text-amber-200 border border-amber-400/50 shadow-sm" title={`المسدد: ${totalCollected.toLocaleString('ar-EG')} ج.م | المتبقي: ${totalRemaining.toLocaleString('ar-EG')} ج.م`}>
+                                  <AlertCircle className="w-4 h-4 text-amber-300" />
+                                  <span>مسدد جزئيًا (متبقي {totalRemaining.toLocaleString('ar-EG')} ج.م)</span>
+                                </span>
                               ) : isTargetAdvance ? (
                                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black bg-sky-500/20 text-sky-300 border border-sky-500/40 shadow-sm">
                                   <Clock className="w-4 h-4" />
                                   <span>مدفوع مقدماً</span>
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm">
-                                  <AlertCircle className="w-4 h-4" />
-                                  <span>{isAllMonths || isAllYears ? 'يوجد غير محصل' : 'مستحق الشهر الحالي'}</span>
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm">
+                                  <AlertTriangle className="w-4 h-4 text-rose-400" />
+                                  <span>{isAllMonths || isAllYears ? 'يوجد غير محصل' : (currentMonthDue?.forMonthYear && currentMonthDue.forMonthYear < currentMonthISO ? 'متأخر' : 'مستحق السداد')}</span>
                                 </span>
                               )}
                             </td>

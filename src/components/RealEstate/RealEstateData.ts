@@ -98,7 +98,8 @@ export function getAdvanceDeductedFromEntitlementAmount(advance?: ReOwnerAdvance
 
 /**
  * Helper to retrieve all active, non-reverted, non-cancelled collection receipts matching a given rent due.
- * Matches strictly on tenantId + (unitId or propertyId) + forMonthYear (month & year) + receiptId / dueId.
+ * Matches strictly on tenantId/tenantName + unitId/unitNumber + forMonthYear (month & year) + receiptId / dueId.
+ * SSoT: A receipt only matches a due if it belongs to the exact same tenant, unit, and month/year.
  */
 export function getMatchingCollectionReceipts(
   due: ReRentDue,
@@ -106,30 +107,35 @@ export function getMatchingCollectionReceipts(
 ): ReCollectionReceipt[] {
   if (!due || !collections || collections.length === 0) return [];
 
+  const dueMonthYear = (due.forMonthYear || (due.dueDate ? due.dueDate.slice(0, 7) : '')).trim().replace('/', '-');
+
   return collections.filter(c => {
     if (!c || c.status === 'reverted' || c.isCancelled || !(c.amountPaid && c.amountPaid > 0)) {
       return false;
     }
 
-    // 1. Direct match by receipt ID or due ID
-    if (c.dueId && c.dueId === due.id) return true;
-    if (due.collectionReceiptId && c.id === due.collectionReceiptId) return true;
-    if (due.receiptNumber && c.receiptNumber === due.receiptNumber) return true;
-
-    // 2. Strict matching by Tenant
-    const tenantMatches = !!(c.tenantId && due.tenantId && c.tenantId === due.tenantId);
+    // 1. Strict Tenant Match: Must match tenantId (or tenantName if missing)
+    const tenantMatches = !!(
+      (c.tenantId && due.tenantId && c.tenantId === due.tenantId) ||
+      (c.tenantName && due.tenantName && c.tenantName.trim().toLowerCase() === due.tenantName.trim().toLowerCase())
+    );
     if (!tenantMatches) return false;
 
-    // Strict Month/Year matching (e.g., '2026-08')
-    const dueMonthYear = due.forMonthYear || (due.dueDate ? due.dueDate.slice(0, 7) : '');
-    const receiptMonthYear = c.forMonthYear || (c.paymentDate ? c.paymentDate.slice(0, 7) : '');
-    if (!dueMonthYear || !receiptMonthYear || dueMonthYear !== receiptMonthYear) return false;
-
-    // Unit & Property consistency validation if present on both
+    // 2. Unit and Property consistency: if specified on both, they MUST match
     if (c.unitId && due.unitId && c.unitId !== due.unitId) return false;
+    if (c.unitNumber && due.unitNumber && c.unitNumber.trim() !== due.unitNumber.trim()) return false;
     if (c.propertyId && due.propertyId && c.propertyId !== due.propertyId) return false;
 
-    return true;
+    // 3. Direct ID link verification (if linked, tenant & unit already validated above)
+    if (c.dueId && c.dueId === due.id) return true;
+    if (due.collectionReceiptId && c.id === due.collectionReceiptId) return true;
+    if (due.receiptNumber && c.receiptNumber && due.receiptNumber === c.receiptNumber) return true;
+
+    // 4. Strict Month/Year Match (e.g., '2026-08')
+    const receiptMonthYear = (c.forMonthYear || (c.paymentDate ? c.paymentDate.slice(0, 7) : '')).trim().replace('/', '-');
+    if (!dueMonthYear || !receiptMonthYear) return false;
+
+    return dueMonthYear === receiptMonthYear || receiptMonthYear.includes(dueMonthYear) || dueMonthYear.includes(receiptMonthYear);
   });
 }
 
@@ -152,10 +158,12 @@ export interface DueCollectionDetails {
 
 /**
  * Returns comprehensive details for a rent due strictly from physically saved collection receipts.
- * - Matching receipts for tenant + unit + month
- * - A month is ONLY fully paid if totalPaid >= rentAmount
- * - If totalPaid > 0 but < rentAmount, it is partially paid with remaining balance
- * - If totalPaid === 0, it is unpaid/overdue depending on the due date
+ * SSoT Rules:
+ * - Matching receipts for tenant + unit + month + year
+ * - A month is ONLY fully paid ('collected' or 'prepaid') if matchingReceipts.length > 0 AND totalPaid >= rentAmount
+ * - If matchingReceipts.length > 0 AND totalPaid > 0 AND totalPaid < rentAmount, it is partially paid ('partial') with remaining balance
+ * - If matchingReceipts.length === 0, it is unpaid ('overdue' if due date passed, otherwise 'pending_collection')
+ * - Never relies on UI-cached or temporary flags.
  */
 export function getDueCollectionDetails(
   due: ReRentDue,
@@ -167,14 +175,16 @@ export function getDueCollectionDetails(
   const totalPaid = matchingReceipts.reduce((sum, r) => sum + (r.amountPaid || 0), 0);
   const rentAmount = due?.rentAmount || 0;
   const remainingAmount = Math.max(0, rentAmount - totalPaid);
-  const dueMonthYear = due?.forMonthYear || (due?.dueDate ? due.dueDate.slice(0, 7) : '');
+  const dueMonthYear = (due?.forMonthYear || (due?.dueDate ? due.dueDate.slice(0, 7) : '')).trim().replace('/', '-');
   const isFuture = !!(dueMonthYear && dueMonthYear > currentMonthISO);
 
   let status: 'collected' | 'partial' | 'overdue' | 'pending_collection' | 'prepaid';
-  if (rentAmount > 0 && totalPaid >= rentAmount) {
+  if (matchingReceipts.length > 0 && rentAmount > 0 && totalPaid >= rentAmount) {
     status = isFuture ? 'prepaid' : 'collected';
-  } else if (totalPaid > 0 && totalPaid < rentAmount) {
+  } else if (matchingReceipts.length > 0 && totalPaid > 0 && totalPaid < rentAmount) {
     status = 'partial';
+  } else if (matchingReceipts.length > 0 && totalPaid > 0) {
+    status = isFuture ? 'prepaid' : 'collected';
   } else {
     if ((due?.dueDate && due.dueDate <= todayISO) || (dueMonthYear && dueMonthYear <= currentMonthISO)) {
       status = 'overdue';
