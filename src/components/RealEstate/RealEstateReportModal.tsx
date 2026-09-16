@@ -7,6 +7,8 @@ import {
 } from '../../types';
 import { 
   getDueCollectionStatus, 
+  getDueCollectionDetails,
+  isDueCollected,
   getDuePayoutStatus, 
   calculateCommissionFromSettings, 
   getDueCommissionAmount, 
@@ -522,14 +524,12 @@ export function generateRealEstateReportHTML(params: {
       sumNetOwner += netAmt;
 
       const pStat = getDuePayoutStatus(d);
-      const cStat = getDueCollectionStatus(d, todayISO, currentMonthISO, collections);
+      const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
 
-      if (cStat === 'collected' || cStat === 'prepaid') {
-        sumCollected += d.collectedAmount || d.rentAmount || 0;
-      }
+      sumCollected += details.totalPaid;
       if (pStat === 'paid_out') {
         sumDisbursed += d.netOwnerAmount || 0;
-        if (cStat !== 'collected') {
+        if (!details.isFullyPaid) {
           sumAdvances += d.netOwnerAmount || 0;
         }
       }
@@ -1461,13 +1461,8 @@ export function generateRealEstateReportHTML(params: {
                 const tenantDuesInPeriod = filteredDues.filter(d => d.tenantId === t.id);
 
                 const unpaidDues = tenantDuesInPeriod.filter(d => {
-                  const matchingColl = activeCollections.find(c => 
-                    c.tenantId === d.tenantId &&
-                    ((c.dueId && c.dueId === d.id) || c.forMonthYear === d.forMonthYear)
-                  );
-                  const cStat = getDueCollectionStatus(d, todayISO, currentMonthISO, collections);
-                  const isCollected = (cStat === 'collected' || cStat === 'prepaid') && !!matchingColl;
-                  return !isCollected && (!d.forMonthYear || d.forMonthYear <= currentMonthISO);
+                  const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
+                  return !details.isFullyPaid && (!d.forMonthYear || d.forMonthYear <= currentMonthISO);
                 });
                 const overdueMonthsCount = unpaidDues.length;
 
@@ -1475,14 +1470,8 @@ export function generateRealEstateReportHTML(params: {
                 const tRentCurrent = latestTenantDue?.rentAmount || t.rentAmount || tUnit?.rentValue || 0;
                 const tTotalReq = tenantDuesInPeriod.reduce((s, d) => s + (d.rentAmount || 0), 0);
                 const tTotalColl = tenantDuesInPeriod.reduce((s, d) => {
-                  const matchingColl = activeCollections.find(c => 
-                    c.tenantId === d.tenantId &&
-                    ((c.dueId && c.dueId === d.id) || c.forMonthYear === d.forMonthYear)
-                  );
-                  const cStat = getDueCollectionStatus(d, todayISO, currentMonthISO, collections);
-                  const isCollected = (cStat === 'collected' || cStat === 'prepaid') && !!matchingColl;
-                  const collectedVal = matchingColl?.amountPaid ?? (isCollected ? (d.collectedAmount || d.rentAmount || 0) : 0);
-                  return s + collectedVal;
+                  const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
+                  return s + details.totalPaid;
                 }, 0);
                 const tArrears = Math.max(0, tTotalReq - tTotalColl);
 
@@ -1555,24 +1544,20 @@ export function generateRealEstateReportHTML(params: {
                 </td>
               </tr>
             ` : filteredDues.map((d, idx) => {
-              const activeCollections = collections.filter(c => c && c.status !== 'reverted' && !c.isCancelled && (c.amountPaid || 0) > 0);
-              const matchingColl = activeCollections.find(c => 
-                c.tenantId === d.tenantId &&
-                ((c.dueId && c.dueId === d.id) || c.forMonthYear === d.forMonthYear)
-              );
+              const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
+              const rentDue = d.rentAmount || 0;
+              const collected = details.totalPaid;
+              const arrears = details.remainingAmount;
+              const isCollected = details.isFullyPaid;
+              const isPartial = details.isPartial;
+              const paidDateVal = details.paymentDate || '';
+              const receiptNoVal = details.receiptNumber || '';
+
               const revertedColl = collections.find(c => 
                 (c.status === 'reverted' || c.isCancelled) &&
                 c.tenantId === d.tenantId &&
                 ((c.dueId && c.dueId === d.id) || c.forMonthYear === d.forMonthYear)
               );
-
-              const cStat = getDueCollectionStatus(d, todayISO, currentMonthISO, collections);
-              const isCollected = (cStat === 'collected' || cStat === 'prepaid') && !!matchingColl;
-              const rentDue = d.rentAmount || 0;
-              const collected = isCollected ? (matchingColl?.amountPaid ?? (d.collectedAmount || rentDue)) : 0;
-              const arrears = Math.max(0, rentDue - collected);
-              const paidDateVal = matchingColl?.paymentDate || d.paidDate || '';
-              const receiptNoVal = matchingColl?.receiptNumber || d.receiptNumber || '';
 
               const isPrepaidReserve = isCollected && d.forMonthYear && d.forMonthYear > currentMonthISO;
               let badgeClass = 'badge-pending';
@@ -1582,10 +1567,14 @@ export function generateRealEstateReportHTML(params: {
               if (isCollected) {
                 badgeClass = 'badge-collected';
                 badgeText = isPrepaidReserve ? 'مقدم رصيد' : 'مسدد بالكامل';
+              } else if (isPartial) {
+                badgeClass = 'badge-pending';
+                badgeText = 'مسدد جزئياً';
+                badgeCustomStyle = 'background-color: #fef3c7; color: #b45309; border: 1px solid #f59e0b;';
               } else if (revertedColl || d.lastRevertDate) {
                 badgeClass = 'badge-overdue';
                 badgeText = 'مرتجع / ملغى';
-              } else if (cStat === 'overdue') {
+              } else if (details.status === 'overdue') {
                 badgeClass = 'badge-overdue';
                 badgeText = 'متأخر';
               }
@@ -1598,14 +1587,16 @@ export function generateRealEstateReportHTML(params: {
                   <td class="num-font" style="color: #475569;">${d.dueDate || ''}</td>
                   <td class="num-font" style="font-weight: 800; color: #1e293b;">${rentDue.toLocaleString('ar-EG')} ج.م</td>
                   <td class="num-font" style="color: #059669; font-weight: 700;">${collected.toLocaleString('ar-EG')} ج.م</td>
-                  <td class="num-font" style="color: #dc2626; font-weight: 700;">${arrears.toLocaleString('ar-EG')} ج.م</td>
+                  <td class="num-font" style="color: ${arrears > 0 ? '#dc2626' : '#059669'}; font-weight: 700;">${arrears.toLocaleString('ar-EG')} ج.م</td>
                   <td class="num-font" style="font-size: 8pt; color: #334155;">
                     ${isCollected 
                       ? `إيصال #${receiptNoVal || 'محصل'}<br><span style="color: #64748b;">${paidDateVal || ''}</span>` 
-                      : (revertedColl || d.lastRevertDate
-                          ? `<span style="color: #dc2626; font-weight: 800; font-size: 7.5pt;">⚠️ تم إلغاء التحصيل والرجوع عنه</span><br><span style="color: #991b1b; font-size: 7pt;">تاريخ الرجوع: ${revertedColl?.updatedAt?.slice(0, 10) || revertedColl?.revertedAt || d.lastRevertDate || paidDateVal || '—'}</span>`
-                          : '—'
-                        )
+                      : isPartial
+                        ? `إيصال #${receiptNoVal || 'جزئي'}<br><span style="color: #64748b;">${paidDateVal || ''}</span><br><span style="color: #b45309; font-size: 7pt; font-weight: bold;">(متبقي: ${arrears.toLocaleString('ar-EG')} ج.م)</span>`
+                        : (revertedColl || d.lastRevertDate
+                            ? `<span style="color: #dc2626; font-weight: 800; font-size: 7.5pt;">⚠️ تم إلغاء التحصيل والرجوع عنه</span><br><span style="color: #991b1b; font-size: 7pt;">تاريخ الرجوع: ${revertedColl?.updatedAt?.slice(0, 10) || revertedColl?.revertedAt || d.lastRevertDate || paidDateVal || '—'}</span>`
+                            : '—'
+                          )
                     }
                   </td>
                   <td><span class="badge ${badgeClass}" ${badgeCustomStyle ? `style="${badgeCustomStyle}"` : ''}>${badgeText}</span></td>

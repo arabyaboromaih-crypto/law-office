@@ -25,7 +25,7 @@ import {
   ReCollectionReceipt, RePayout, RePropertyExpense, ReOwnerAdvance, ReAdvanceDeductionEntry,
   ReRentDue, User, ReCommissionStatus, ReRentAdjustment 
 } from '../../types';
-import { getDueCollectionStatus, isDueCollected, calculateCommissionFromSettings, getDueCommissionAmount, getPropertyCommissionSettings, getSectionCommissionForPropertyMonth, calculatePropertyStatementsData, calculateOwnerStatementsData, isTenantMonthSuspended, getMatchingCollectionReceipts, isAdvanceDeductedFromEntitlement, getAdvanceDeductedAmount, getAdvanceDeductedFromEntitlementAmount } from './RealEstateData';
+import { getDueCollectionStatus, getDueCollectionDetails, isDueCollected, calculateCommissionFromSettings, getDueCommissionAmount, getPropertyCommissionSettings, getSectionCommissionForPropertyMonth, calculatePropertyStatementsData, calculateOwnerStatementsData, isTenantMonthSuspended, getMatchingCollectionReceipts, isAdvanceDeductedFromEntitlement, getAdvanceDeductedAmount, getAdvanceDeductedFromEntitlementAmount } from './RealEstateData';
 import SearchableTenantDropdown from './SearchableTenantDropdown';
 import TenantCollectionReceiptsModal from './TenantCollectionReceiptsModal';
 import { PropertyPayoutReceiptsModal } from './PropertyPayoutReceiptsModal';
@@ -7239,16 +7239,9 @@ export default function RealEstateFinancials({
                 : (!tenantRegMonthISO || (d.forMonthYear && d.forMonthYear >= tenantRegMonthISO));
               const matchesToMonth = !tenantToMonth || (d.forMonthYear && d.forMonthYear <= tenantToMonth);
 
-              const activeCollections = collections.filter(c => c.status !== 'reverted' && !c.isCancelled);
-
-              // Import matching collection receipt from re_collections (collections array) or due object
-              const matchingCollection = activeCollections.find(c => 
-                c.tenantId === d.tenantId &&
-                (c.forMonthYear === d.forMonthYear || (c.paymentDate && c.paymentDate.slice(0, 7) === d.forMonthYear))
-              );
-
-              const cStatus = getDueCollectionStatus(d, todayISO, currentMonthISO, collections);
-              const isCollected = (cStatus === 'collected' || cStatus === 'prepaid') && ((d.collectedAmount || 0) > 0 || (matchingCollection?.amountPaid || 0) > 0);
+              const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
+              const isCollected = details.isFullyPaid;
+              const cStatus = details.status;
 
               // Rule: Include all past/current months (up to current month) AND ONLY paid reserve/future months
               const isCurrentOrPast = !d.forMonthYear || d.forMonthYear <= currentMonthISO;
@@ -7277,40 +7270,35 @@ export default function RealEstateFinancials({
 
             let cumulativeBalance = 0;
             const duesWithCalculatedBalances = sortedAscDues.map(d => {
-              const activeCollections = collections.filter(c => c.status !== 'reverted' && !c.isCancelled);
-              // Import matching collection receipt from re_collections (collections array) or due object
-              const matchingCollection = activeCollections.find(c => 
-                c.tenantId === d.tenantId &&
-                (c.forMonthYear === d.forMonthYear || (c.paymentDate && c.paymentDate.slice(0, 7) === d.forMonthYear))
-              );
+              const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
               const revertedCollection = collections.find(c => 
                 (c.status === 'reverted' || c.isCancelled) &&
                 c.tenantId === d.tenantId &&
                 (c.forMonthYear === d.forMonthYear || (c.paymentDate && c.paymentDate.slice(0, 7) === d.forMonthYear))
               );
 
-              const cStatus = getDueCollectionStatus(d, todayISO, currentMonthISO, collections);
-              const isCollected = (cStatus === 'collected' || cStatus === 'prepaid') && ((d.collectedAmount || 0) > 0 || (matchingCollection?.amountPaid || 0) > 0);
-              const paidAmt = isCollected ? (matchingCollection?.amountPaid ?? (d.collectedAmount || d.rentAmount)) : 0;
-              const remainingAmt = Math.max(0, d.rentAmount - paidAmt);
-              const paidDateVal = isCollected ? (matchingCollection?.paymentDate || d.paidDate || '') : '';
-              const receiptNoVal = isCollected ? (matchingCollection?.receiptNumber || d.receiptNumber || '') : '';
-              const paymentMethodVal = isCollected ? (matchingCollection?.paymentMethod || d.paymentMethod || '') : '';
+              const cStatus = details.status;
+              const isCollected = details.isFullyPaid;
+              const paidAmt = details.totalPaid;
+              const remainingAmt = details.remainingAmount;
+              const paidDateVal = details.paymentDate || '';
+              const receiptNoVal = details.receiptNumber || '';
+              const paymentMethodVal = details.paymentMethod || '';
 
               sumRequired += d.rentAmount;
               sumCollected += paidAmt;
               sumRemaining += remainingAmt;
 
-              if (isCollected || paidAmt >= d.rentAmount) {
+              if (isCollected) {
                 countPaidMonths++;
               } else {
                 countUnpaidMonths++;
               }
 
               let computedStatus: 'collected' | 'partial' | 'unpaid' = 'unpaid';
-              if (isCollected || remainingAmt === 0) {
+              if (isCollected) {
                 computedStatus = 'collected';
-              } else if (paidAmt > 0 && remainingAmt > 0) {
+              } else if (details.isPartial) {
                 computedStatus = 'partial';
               } else {
                 computedStatus = 'unpaid';
@@ -7676,12 +7664,8 @@ export default function RealEstateFinancials({
                               });
 
                               const unpaidDues = tenantDuesAll.filter(d => {
-                                const matchingColl = collections.find(c => 
-                                  c.tenantId === d.tenantId &&
-                                  (c.forMonthYear === d.forMonthYear || (c.paymentDate && c.paymentDate.slice(0, 7) === d.forMonthYear))
-                                );
-                                const isCollected = getDueCollectionStatus(d, todayISO, currentMonthISO, collections) === 'collected';
-                                return !isCollected && (!d.forMonthYear || d.forMonthYear <= currentMonthISO);
+                                const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
+                                return !details.isFullyPaid && (!d.forMonthYear || d.forMonthYear <= currentMonthISO);
                               });
                               const overdueMonthsCount = unpaidDues.length;
 
@@ -7689,19 +7673,14 @@ export default function RealEstateFinancials({
                               const tRentCurrent = latestTenantDue?.rentAmount || t.rentAmount || tUnit?.rentValue || 0;
                               const tTotalReq = tenantDuesAll.reduce((s, d) => s + (d.rentAmount || 0), 0);
                               const tTotalColl = tenantDuesAll.reduce((s, d) => {
-                                const matchingColl = collections.find(c => 
-                                  c.tenantId === d.tenantId &&
-                                  (c.forMonthYear === d.forMonthYear || (c.paymentDate && c.paymentDate.slice(0, 7) === d.forMonthYear))
-                                );
-                                const isCollected = getDueCollectionStatus(d, todayISO, currentMonthISO, collections) === 'collected';
-                                const collectedVal = matchingColl?.amountPaid ?? (isCollected ? (d.collectedAmount || d.rentAmount) : 0);
-                                return s + collectedVal;
+                                const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
+                                return s + details.totalPaid;
                               }, 0);
                               const tArrears = Math.max(0, tTotalReq - tTotalColl);
 
-                              const tCollections = collections.filter(c => c.tenantId === t.id);
+                              const activeTenantCollections = collections.filter(c => c.tenantId === t.id && c.status !== 'reverted' && !c.isCancelled);
                               const collDates = [
-                                ...tCollections.map(c => c.paymentDate).filter(Boolean),
+                                ...activeTenantCollections.map(c => c.paymentDate).filter(Boolean),
                                 ...tenantDuesAll.map(d => d.paidDate).filter(Boolean)
                               ].sort((a, b) => (b || '').localeCompare(a || ''));
                               const lastPaymentDate = collDates.length > 0 ? collDates[0] : '—';
@@ -7765,20 +7744,20 @@ export default function RealEstateFinancials({
 
                     // Section 1: الشهور المحصلة
                     const collectedMonths = tenantDuesAll.filter(d => {
-                      const cStat = getDueCollectionStatus(d, todayISO, currentMonthISO, collections);
-                      return (d.forMonthYear || '') <= currentMonthISO && (cStat === 'collected' || cStat === 'prepaid');
+                      const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
+                      return (d.forMonthYear || '') <= currentMonthISO && details.isFullyPaid;
                     });
 
-                    // Section 2: الشهور المتأخرة
+                    // Section 2: الشهور المتأخرة وغير المسددة أو المسددة جزئياً
                     const overdueMonths = tenantDuesAll.filter(d => {
-                      const cStat = getDueCollectionStatus(d, todayISO, currentMonthISO, collections);
-                      return (d.forMonthYear || '') <= currentMonthISO && cStat !== 'collected' && cStat !== 'prepaid';
+                      const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
+                      return (d.forMonthYear || '') <= currentMonthISO && !details.isFullyPaid;
                     });
 
                     // Section 3: الشهور المسددة مسبقًا (الدفع المسبق / السداد الاحتياطي)
                     const prepaidMonths = tenantDuesAll.filter(d => {
-                      const cStat = getDueCollectionStatus(d, todayISO, currentMonthISO, collections);
-                      return (d.forMonthYear || '') > currentMonthISO && (cStat === 'collected' || cStat === 'prepaid');
+                      const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
+                      return (d.forMonthYear || '') > currentMonthISO && details.isFullyPaid;
                     });
 
                     const calculateDelayDays = (due: ReRentDue) => {
@@ -7879,34 +7858,37 @@ export default function RealEstateFinancials({
                                     </td>
                                   </tr>
                                 ) : (
-                                  collectedMonths.map((d, idx) => (
-                                    <tr key={d.id} className="hover:bg-[#08111F]/40 transition-colors">
-                                      <td className="p-3 text-center font-mono text-[#9EA7B8] text-[11px]">{idx + 1}</td>
-                                      <td className="p-3 font-mono text-[#F8F9FB] font-extrabold">{d.monthNameAr || d.forMonthYear}</td>
-                                      <td className="p-3 text-center font-mono text-emerald-400 font-black">
-                                        {(d.collectedAmount || d.rentAmount || 0).toLocaleString('ar-EG')} ج.م
-                                      </td>
-                                      <td className="p-3 text-center font-mono text-[#F8F9FB] text-[11px]">{d.paidDate || '—'}</td>
-                                      <td className="p-3 text-center font-mono text-[#D4A84F] font-bold">{d.receiptNumber || '—'}</td>
-                                      <td className="p-3 text-center font-bold text-[#9EA7B8]">{formatPaymentMethod(d.paymentMethod)}</td>
-                                      <td className="p-3 text-center">
-                                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                                          <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
-                                          <span>تم التحصيل</span>
-                                        </span>
-                                      </td>
-                                      <td className="p-3 text-center">
-                                        <button
-                                          onClick={() => handleOpenRevertModal(currentTenantObj, currentUnitObj, currentPropObj, currentOwnerObj, d.id)}
-                                          className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-[11px] font-black transition-all cursor-pointer inline-flex items-center gap-1"
-                                          title="الرجوع عن تحصيل هذا الشهر وإعادته للمتأخرات"
-                                        >
-                                          <RefreshCw className="w-3.5 h-3.5" />
-                                          <span>الرجوع عن التحصيل</span>
-                                        </button>
-                                      </td>
-                                    </tr>
-                                  ))
+                                  collectedMonths.map((d, idx) => {
+                                    const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
+                                    return (
+                                      <tr key={d.id} className="hover:bg-[#08111F]/40 transition-colors">
+                                        <td className="p-3 text-center font-mono text-[#9EA7B8] text-[11px]">{idx + 1}</td>
+                                        <td className="p-3 font-mono text-[#F8F9FB] font-extrabold">{d.monthNameAr || d.forMonthYear}</td>
+                                        <td className="p-3 text-center font-mono text-emerald-400 font-black">
+                                          {details.totalPaid.toLocaleString('ar-EG')} ج.م
+                                        </td>
+                                        <td className="p-3 text-center font-mono text-[#F8F9FB] text-[11px]">{details.paymentDate || d.paidDate || '—'}</td>
+                                        <td className="p-3 text-center font-mono text-[#D4A84F] font-bold">{details.receiptNumber || d.receiptNumber || '—'}</td>
+                                        <td className="p-3 text-center font-bold text-[#9EA7B8]">{formatPaymentMethod(details.paymentMethod || d.paymentMethod)}</td>
+                                        <td className="p-3 text-center">
+                                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                            <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                                            <span>تم التحصيل</span>
+                                          </span>
+                                        </td>
+                                        <td className="p-3 text-center">
+                                          <button
+                                            onClick={() => handleOpenRevertModal(currentTenantObj, currentUnitObj, currentPropObj, currentOwnerObj, d.id)}
+                                            className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-[11px] font-black transition-all cursor-pointer inline-flex items-center gap-1"
+                                            title="الرجوع عن تحصيل هذا الشهر وإعادته للمتأخرات"
+                                          >
+                                            <RefreshCw className="w-3.5 h-3.5" />
+                                            <span>الرجوع عن التحصيل</span>
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })
                                 )}
                               </tbody>
                             </table>
@@ -7939,6 +7921,8 @@ export default function RealEstateFinancials({
                                   <th className="p-3 text-center w-10">#</th>
                                   <th className="p-3">الشهر والسنة</th>
                                   <th className="p-3 text-center">قيمة الإيجار</th>
+                                  <th className="p-3 text-center">المسدد بسند التحصيل</th>
+                                  <th className="p-3 text-center">المتبقي المستحق</th>
                                   <th className="p-3 text-center">تاريخ الاستحقاق</th>
                                   <th className="p-3 text-center">عدد أيام التأخير</th>
                                   <th className="p-3 text-center">حالة الشهر</th>
@@ -7947,13 +7931,14 @@ export default function RealEstateFinancials({
                               <tbody className="divide-y divide-rose-500/10 font-bold">
                                 {overdueMonths.length === 0 ? (
                                   <tr>
-                                    <td colSpan={6} className="p-8 text-center text-[#9EA7B8]">
+                                    <td colSpan={8} className="p-8 text-center text-[#9EA7B8]">
                                       <CheckCircle className="w-8 h-8 text-emerald-400/40 mx-auto mb-2" />
                                       <p className="text-xs font-bold text-emerald-400">🎉 لا توجد شهور متأخرة! المستأجر منتظم تماماً بالسداد.</p>
                                     </td>
                                   </tr>
                                 ) : (
                                   overdueMonths.map((d, idx) => {
+                                    const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
                                     const delayDays = calculateDelayDays(d);
                                     const revertedColl = collections.find(c => 
                                       (c.status === 'reverted' || c.isCancelled) &&
@@ -7963,11 +7948,26 @@ export default function RealEstateFinancials({
                                     const isReverted = !!revertedColl || !!d.lastRevertDate || (d.collectionNotes && d.collectionNotes.includes('رجوع'));
 
                                     return (
-                                      <tr key={d.id} className={`${isReverted ? 'bg-amber-500/[0.06]' : 'bg-rose-500/[0.03]'} hover:bg-rose-500/[0.07] transition-colors`}>
+                                      <tr key={d.id} className={`${isReverted ? 'bg-amber-500/[0.06]' : details.isPartial ? 'bg-amber-500/[0.04]' : 'bg-rose-500/[0.03]'} hover:bg-rose-500/[0.07] transition-colors`}>
                                         <td className="p-3 text-center font-mono text-[#9EA7B8] text-[11px]">{idx + 1}</td>
                                         <td className="p-3 font-mono text-[#F8F9FB] font-extrabold">{d.monthNameAr || d.forMonthYear}</td>
-                                        <td className="p-3 text-center font-mono text-rose-400 font-black">
+                                        <td className="p-3 text-center font-mono text-[#F8F9FB] font-black">
                                           {(d.rentAmount || 0).toLocaleString('ar-EG')} ج.م
+                                        </td>
+                                        <td className="p-3 text-center font-mono text-emerald-400 font-bold">
+                                          {details.totalPaid > 0 ? (
+                                            <div>
+                                              <span>{details.totalPaid.toLocaleString('ar-EG')} ج.م</span>
+                                              {details.receiptNumber && (
+                                                <span className="block text-[9px] text-[#D4A84F] font-mono">سند #{details.receiptNumber}</span>
+                                              )}
+                                            </div>
+                                          ) : (
+                                            <span className="text-[#9EA7B8]">0 ج.م</span>
+                                          )}
+                                        </td>
+                                        <td className="p-3 text-center font-mono text-rose-400 font-black">
+                                          {details.remainingAmount.toLocaleString('ar-EG')} ج.م
                                         </td>
                                         <td className="p-3 text-center font-mono text-[#F8F9FB] text-[11px]">{d.dueDate || '—'}</td>
                                         <td className="p-3 text-center font-mono text-rose-300 font-black">
@@ -7978,6 +7978,11 @@ export default function RealEstateFinancials({
                                             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40" title={`تم الرجوع عن التحصيل بتاريخ: ${revertedColl?.updatedAt?.slice(0, 10) || d.lastRevertDate || '—'}`}>
                                               <RefreshCw className="w-3.5 h-3.5 text-amber-400" />
                                               <span>⚠️ مرجوع عن التحصيل</span>
+                                            </span>
+                                          ) : details.isPartial ? (
+                                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                              <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+                                              <span>مسدد جزئيًا (متبقي {details.remainingAmount.toLocaleString('ar-EG')} ج.م)</span>
                                             </span>
                                           ) : (
                                             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black bg-rose-500/15 text-rose-400 border border-rose-500/30">
@@ -8048,25 +8053,27 @@ export default function RealEstateFinancials({
                                     </td>
                                   </tr>
                                 ) : (
-                                  prepaidMonths.map((d, idx) => (
-                                    <tr key={d.id} className="bg-amber-500/[0.04] hover:bg-amber-500/[0.08] transition-colors">
-                                      <td className="p-3 text-center font-mono text-[#9EA7B8] text-[11px]">{idx + 1}</td>
-                                      <td className="p-3 font-mono text-[#F8F9FB] font-extrabold flex items-center gap-2">
-                                        <span>{d.monthNameAr || d.forMonthYear}</span>
-                                        <span className="text-[9px] font-sans px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/40 font-black">
-                                          احتياطي مدفوع
-                                        </span>
-                                      </td>
-                                      <td className="p-3 text-center font-mono text-amber-300 font-black">
-                                        {(d.collectedAmount || d.rentAmount || 0).toLocaleString('ar-EG')} ج.م
-                                      </td>
-                                      <td className="p-3 text-center font-mono text-[#F8F9FB] text-[11px]">{d.paidDate || '—'}</td>
-                                      <td className="p-3 text-center">
-                                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-400/40">
-                                          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                                          <span>مدفوع مسبقًا</span>
-                                        </span>
-                                      </td>
+                                  prepaidMonths.map((d, idx) => {
+                                    const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
+                                    return (
+                                      <tr key={d.id} className="bg-amber-500/[0.04] hover:bg-amber-500/[0.08] transition-colors">
+                                        <td className="p-3 text-center font-mono text-[#9EA7B8] text-[11px]">{idx + 1}</td>
+                                        <td className="p-3 font-mono text-[#F8F9FB] font-extrabold flex items-center gap-2">
+                                          <span>{d.monthNameAr || d.forMonthYear}</span>
+                                          <span className="text-[9px] font-sans px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/40 font-black">
+                                            احتياطي مدفوع
+                                          </span>
+                                        </td>
+                                        <td className="p-3 text-center font-mono text-amber-300 font-black">
+                                          {details.totalPaid.toLocaleString('ar-EG')} ج.م
+                                        </td>
+                                        <td className="p-3 text-center font-mono text-[#F8F9FB] text-[11px]">{details.paymentDate || d.paidDate || '—'}</td>
+                                        <td className="p-3 text-center">
+                                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-400/40">
+                                            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                                            <span>مدفوع مسبقًا</span>
+                                          </span>
+                                        </td>
                                       <td className="p-3 text-center">
                                         <button
                                           type="button"
@@ -8079,10 +8086,11 @@ export default function RealEstateFinancials({
                                         </button>
                                       </td>
                                     </tr>
-                                  ))
-                                )}
-                              </tbody>
-                            </table>
+                                  );
+                                })
+                              )}
+                            </tbody>
+                          </table>
                           </div>
                         </div>
                       </div>

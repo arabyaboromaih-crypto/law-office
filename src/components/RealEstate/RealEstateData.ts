@@ -134,56 +134,93 @@ export function getMatchingCollectionReceipts(
 }
 
 /**
+ * DETAILS OF A DUE'S COLLECTION STATUS DERIVED STRICTLY FROM SAVED COLLECTION RECEIPTS
+ */
+export interface DueCollectionDetails {
+  status: 'collected' | 'partial' | 'overdue' | 'pending_collection' | 'prepaid';
+  isFullyPaid: boolean;
+  isPartial: boolean;
+  isUnpaid: boolean;
+  totalPaid: number;
+  remainingAmount: number;
+  matchingReceipts: ReCollectionReceipt[];
+  latestReceipt: ReCollectionReceipt | null;
+  receiptNumber: string;
+  paymentDate: string;
+  paymentMethod: string;
+}
+
+/**
+ * Returns comprehensive details for a rent due strictly from physically saved collection receipts.
+ * - Matching receipts for tenant + unit + month
+ * - A month is ONLY fully paid if totalPaid >= rentAmount
+ * - If totalPaid > 0 but < rentAmount, it is partially paid with remaining balance
+ * - If totalPaid === 0, it is unpaid/overdue depending on the due date
+ */
+export function getDueCollectionDetails(
+  due: ReRentDue,
+  todayISO: string = new Date().toISOString().slice(0, 10),
+  currentMonthISO: string = new Date().toISOString().slice(0, 7),
+  collections?: ReCollectionReceipt[]
+): DueCollectionDetails {
+  const matchingReceipts = getMatchingCollectionReceipts(due, collections);
+  const totalPaid = matchingReceipts.reduce((sum, r) => sum + (r.amountPaid || 0), 0);
+  const rentAmount = due?.rentAmount || 0;
+  const remainingAmount = Math.max(0, rentAmount - totalPaid);
+  const dueMonthYear = due?.forMonthYear || (due?.dueDate ? due.dueDate.slice(0, 7) : '');
+  const isFuture = !!(dueMonthYear && dueMonthYear > currentMonthISO);
+
+  let status: 'collected' | 'partial' | 'overdue' | 'pending_collection' | 'prepaid';
+  if (rentAmount > 0 && totalPaid >= rentAmount) {
+    status = isFuture ? 'prepaid' : 'collected';
+  } else if (totalPaid > 0 && totalPaid < rentAmount) {
+    status = 'partial';
+  } else {
+    if ((due?.dueDate && due.dueDate <= todayISO) || (dueMonthYear && dueMonthYear <= currentMonthISO)) {
+      status = 'overdue';
+    } else {
+      status = 'pending_collection';
+    }
+  }
+
+  // Sort matching receipts descending by paymentDate / createdAt
+  const sortedReceipts = [...matchingReceipts].sort((a, b) => 
+    (b.paymentDate || b.createdAt || '').localeCompare(a.paymentDate || a.createdAt || '')
+  );
+  const latestReceipt = sortedReceipts[0] || null;
+
+  return {
+    status,
+    isFullyPaid: status === 'collected' || status === 'prepaid',
+    isPartial: status === 'partial',
+    isUnpaid: status === 'overdue' || status === 'pending_collection',
+    totalPaid,
+    remainingAmount,
+    matchingReceipts,
+    latestReceipt,
+    receiptNumber: latestReceipt?.receiptNumber || '',
+    paymentDate: latestReceipt?.paymentDate || '',
+    paymentMethod: latestReceipt?.paymentMethod || '',
+  };
+}
+
+/**
  * CENTRAL SINGLE SOURCE OF TRUTH FOR MONTH COLLECTION STATUS
  * Strictly evaluates month status from saved collection receipts (re_collections).
  * Does not rely on stale document fields or temporary cache.
+ * A month is ONLY 'collected' or 'prepaid' if a valid, non-reverted, non-cancelled
+ * collection receipt is physically saved in the re_collections dataset with the full required rent.
  */
 export function getDueCollectionStatus(
   due: ReRentDue, 
   todayISO: string = new Date().toISOString().slice(0, 10), 
   currentMonthISO: string = new Date().toISOString().slice(0, 7),
   collections?: ReCollectionReceipt[]
-): 'collected' | 'overdue' | 'pending_collection' | 'prepaid' {
-  if (!due) return 'overdue';
+): 'collected' | 'overdue' | 'pending_collection' | 'prepaid' | 'partial' {
+  if (!due) return 'pending_collection';
 
-  const dueMonthYear = due.forMonthYear || (due.dueDate ? due.dueDate.slice(0, 7) : '');
-
-  // 1. Strict check: Only consider collected or prepaid if a REAL matching collection receipt is saved
-  if (collections && collections.length > 0) {
-    const matchingReceipts = getMatchingCollectionReceipts(due, collections);
-    const totalPaid = matchingReceipts.reduce((sum, r) => sum + (r.amountPaid || 0), 0);
-
-    if (totalPaid > 0) {
-      // Receipt exists and is verified
-      if (dueMonthYear && dueMonthYear > currentMonthISO) {
-        return 'prepaid';
-      }
-      return 'collected';
-    }
-  }
-
-  // 2. Direct verified status from re_dues document (immediate local reactivity)
-  if (
-    due.status === 'collected' ||
-    due.collectionStatus === 'collected' ||
-    due.collectionStatus === 'prepaid' ||
-    due.status === 'paid_out' ||
-    (due.collectedAmount && due.collectedAmount > 0) ||
-    !!due.receiptNumber
-  ) {
-    if (dueMonthYear && dueMonthYear > currentMonthISO) {
-      return 'prepaid';
-    }
-    return 'collected';
-  }
-
-  // 3. If NO active saved collection receipt or collected status exists for this tenant, unit, and month:
-  // It is evaluated based on due date.
-  if ((due.dueDate && due.dueDate <= todayISO) || (dueMonthYear && dueMonthYear <= currentMonthISO)) {
-    return 'overdue';
-  }
-
-  return 'pending_collection';
+  const details = getDueCollectionDetails(due, todayISO, currentMonthISO, collections);
+  return details.status;
 }
 
 export function isDueCollected(
@@ -686,9 +723,8 @@ export function calculatePropertyStatementsData(params: {
       mEntry.dues.push(d);
 
       const rent = d.rentAmount || 0;
-      const cStat = getDueCollectionStatus(d, todayISO, currentMonthISO, collections);
-      const isCollected = cStat === 'collected' || cStat === 'prepaid';
-      const collected = isCollected ? (d.collectedAmount || d.rentAmount || 0) : 0;
+      const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
+      const collected = details.totalPaid;
 
       mEntry.rentSum += rent;
       mEntry.collectedSum += collected;
@@ -1157,12 +1193,12 @@ export function calculateOwnerStatementsData(params: {
       let mColl = 0;
       let mDisb = 0;
       mDues.forEach(d => {
-        const cStat = getDueCollectionStatus(d, todayISO, currentMonthISO, collections);
+        const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
         const pStat = getDuePayoutStatus(d);
         const dueComm = mRent > 0 ? Math.round(((d.rentAmount || 0) / mRent) * secComm.earnedCommission) : 0;
         const dueNet = Math.max(0, (d.rentAmount || 0) - dueComm);
 
-        if (cStat === 'collected' || cStat === 'prepaid') mColl += (d.collectedAmount || d.rentAmount || 0);
+        mColl += details.totalPaid;
         if (pStat === 'paid_out') mDisb += dueNet;
       });
 

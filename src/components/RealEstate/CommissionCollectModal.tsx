@@ -175,6 +175,13 @@ export default function CommissionCollectModal({
     setValidationError('');
     setSuccessMsg('');
     setIsLocalSaving(false);
+
+    // Auto-focus the scroll container so keyboard arrows and PageUp/PageDown work immediately
+    setTimeout(() => {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.focus({ preventScroll: true });
+      }
+    }, 120);
   }, [isOpen, statement, group, todayISO]);
 
   useBackHandler(isOpen, onClose);
@@ -447,7 +454,7 @@ export default function CommissionCollectModal({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-start justify-center p-2 sm:p-4 pt-2 sm:pt-4 md:pt-4 lg:pt-6 bg-black/85 backdrop-blur-md overflow-y-auto overscroll-contain"
+      className="fixed inset-0 z-[100] flex items-start justify-center p-2 sm:p-3 md:p-4 pt-1 sm:pt-2 md:pt-2 lg:pt-2 bg-black/85 backdrop-blur-md overflow-y-auto overscroll-contain"
       dir="rtl"
       onClick={(e) => {
         if (e.target === e.currentTarget && !isSubmitting && !isLocalSaving) {
@@ -456,11 +463,11 @@ export default function CommissionCollectModal({
       }}
     >
       <motion.div
-        initial={{ opacity: 0, scale: 0.98, y: -12 }}
+        initial={{ opacity: 0, scale: 0.98, y: -8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.98, y: -12 }}
+        exit={{ opacity: 0, scale: 0.98, y: -8 }}
         transition={{ duration: 0.2 }}
-        className="bg-gradient-to-b from-[#0F1C2E] via-[#0A1320] to-[#060D17] border-2 border-[#D4A84F]/50 rounded-3xl w-full max-w-4xl shadow-2xl relative text-[#F8F9FB] my-1 sm:my-2 md:my-3 flex flex-col max-h-[95vh] sm:max-h-[92vh] overflow-hidden"
+        className="bg-gradient-to-b from-[#0F1C2E] via-[#0A1320] to-[#060D17] border-2 border-[#D4A84F]/50 rounded-3xl w-full max-w-4xl shadow-2xl relative text-[#F8F9FB] mt-0 sm:mt-1 md:mt-1 lg:mt-1 mb-2 sm:mb-4 flex flex-col max-h-[96vh] sm:max-h-[95vh] md:max-h-[94vh] lg:max-h-[93vh] overflow-hidden"
       >
         {/* Pinned / Sticky Modal Header */}
         <div className="sticky top-0 z-30 bg-[#0F1C2E] border-b border-[#D4A84F]/30 px-4 sm:px-6 pt-3.5 sm:pt-4 pb-3 sm:pb-3.5 shadow-md rounded-t-3xl flex items-center justify-between gap-3 shrink-0">
@@ -511,14 +518,17 @@ export default function CommissionCollectModal({
         </div>
 
         {/* Form Container wrapping Scrollable Body & Sticky Footer */}
-        <form onSubmit={handleSubmit} id="commission-collect-form" className="flex flex-col flex-1 min-h-0">
+        <form onSubmit={handleSubmit} id="commission-collect-form" className="flex flex-col flex-1 min-h-0 overflow-hidden">
           {/* Scrollable Modal Content (Mouse, Keyboard, Touch) */}
           <div
             ref={scrollContainerRef}
             tabIndex={0}
             onKeyDown={handleKeyDown}
-            className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-6 py-4 space-y-4 focus:outline-none focus:ring-1 focus:ring-[#D4A84F]/30 scroll-smooth"
-            style={{ WebkitOverflowScrolling: 'touch' }}
+            className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-6 py-4 space-y-4 focus:outline-none focus:ring-1 focus:ring-[#D4A84F]/30 scroll-smooth touch-pan-y"
+            style={{
+              WebkitOverflowScrolling: 'touch',
+              touchAction: 'pan-y'
+            }}
           >
             {/* Success Alert Banner */}
             {successMsg && (
