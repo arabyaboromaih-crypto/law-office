@@ -42,7 +42,8 @@ import {
   mergeSessionData,
   deduplicateSessions,
   getSessionCategory,
-  isSameSession
+  isSameSession,
+  getDetentionSessionId
 } from './utils/hearingSync';
 import { toEn, toAr } from './utils/arabicNumbers';
 import { navigationManager, useBackHandler } from './utils/navigationManager';
@@ -77,6 +78,13 @@ export default function App() {
   const [opponents, setOpponents] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [isUsersLoaded, setIsUsersLoaded] = useState(false);
+  const [isCasesLoaded, setIsCasesLoaded] = useState(false);
+  const [isSessionsLoaded, setIsSessionsLoaded] = useState(false);
+
+  const sessionsRef = useRef(sessions);
+  useEffect(() => {
+    sessionsRef.current = sessions;
+  }, [sessions]);
 
   const defaultSettings = useMemo(() => ({
     id: 'office_settings',
@@ -415,8 +423,8 @@ export default function App() {
     syncCollection('users', setUsers, seedUsers, () => setIsUsersLoaded(true));
     syncCollection('clients', setClients, seedClients);
     syncCollection('companies', setCompanies, seedCompanies);
-    syncCollection('cases', setCases, seedCases);
-    syncCollection('sessions', setSessions, seedSessions);
+    syncCollection('cases', setCases, seedCases, () => setIsCasesLoaded(true));
+    syncCollection('sessions', setSessions, seedSessions, () => setIsSessionsLoaded(true));
     syncCollection('auditLogs', setAuditLogs, seedAuditLogs);
     syncCollection('tasks', setTasks, seedTasks);
     syncCollection('opponents', setOpponents, seedOpponents);
@@ -676,14 +684,15 @@ export default function App() {
       return;
     }
 
-    if (!casesToSync || casesToSync.length === 0) return;
+    // Do NOT run sync until both cases and sessions have loaded from Firestore!
+    if (!isSessionsLoaded || !isCasesLoaded || !casesToSync || casesToSync.length === 0) return;
 
     isSyncingAutoSessionsRef.current = true;
     try {
       const expectedAutoSessionsMap = generateExpectedAutoSessionsForAllCases(casesToSync, usersToSync);
 
-      // Current sessions array in Firestore
-      const currentSessions = sessions || [];
+      // Current fresh sessions array in Firestore
+      const currentSessions = sessionsRef.current || [];
       const existingSessionsMap = new Map<string, HearingSession>(currentSessions.map(s => [s.id, s]));
 
       // A. Add missing expected sessions or safely merge changed expected sessions in Firestore
@@ -696,17 +705,26 @@ export default function App() {
           // Preserve any existing manual customizations (decision, custom date/time, court, circuit, status, notes, lawyer, requirements, whatHappened)
           const mergedSession = mergeSessionData(existing, expectedSession);
 
-          const isChanged = 
-            existing.clientName !== mergedSession.clientName ||
-            existing.opponentName !== mergedSession.opponentName ||
-            existing.status !== mergedSession.status ||
-            existing.decision !== mergedSession.decision ||
-            existing.court !== mergedSession.court ||
-            existing.circuit !== mergedSession.circuit ||
-            existing.assignedLawyerId !== mergedSession.assignedLawyerId;
+          // If existing had a legacy non-deterministic ID, migrate to the deterministic ID
+          if (existing.id !== id) {
+            mergedSession.id = id;
+            await addFirestoreDoc('sessions', mergedSession, id);
+            await deleteFirestoreDoc('sessions', existing.id);
+          } else {
+            const isChanged = 
+              existing.clientName !== mergedSession.clientName ||
+              existing.opponentName !== mergedSession.opponentName ||
+              existing.status !== mergedSession.status ||
+              existing.decision !== mergedSession.decision ||
+              existing.court !== mergedSession.court ||
+              existing.circuit !== mergedSession.circuit ||
+              existing.assignedLawyerId !== mergedSession.assignedLawyerId ||
+              existing.isDetentionRenewal !== mergedSession.isDetentionRenewal ||
+              existing.detentionRenewalNumber !== mergedSession.detentionRenewalNumber;
 
-          if (isChanged) {
-            await updateFirestoreDoc('sessions', existing.id, mergedSession);
+            if (isChanged) {
+              await updateFirestoreDoc('sessions', existing.id, mergedSession);
+            }
           }
         }
       }
@@ -725,12 +743,23 @@ export default function App() {
           seenSessions.set(dedupeKey, s);
         } else {
           const keeper = seenSessions.get(dedupeKey)!;
-          // Merge data into keeper so decisions/notes are never lost
-          const merged = mergeSessionData(keeper, s);
-          await updateFirestoreDoc('sessions', keeper.id, merged);
+          const keeperHasDecision = (!!keeper.decision && keeper.decision.trim() !== '') || keeper.status === 'completed';
+          const sHasDecision = (!!s.decision && s.decision.trim() !== '') || s.status === 'completed';
+
+          let primary = keeper;
+          let secondary = s;
+          if (sHasDecision && !keeperHasDecision) {
+            primary = s;
+            secondary = keeper;
+            seenSessions.set(dedupeKey, s);
+          }
+
+          // Merge data into primary so decisions/notes are never lost
+          const merged = mergeSessionData(primary, secondary);
+          await updateFirestoreDoc('sessions', primary.id, merged);
           // Delete redundant duplicate document from Firestore
-          if (s.id !== keeper.id) {
-            await deleteFirestoreDoc('sessions', s.id);
+          if (secondary.id !== primary.id) {
+            await deleteFirestoreDoc('sessions', secondary.id);
           }
         }
       }
@@ -757,10 +786,10 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (cases && cases.length > 0) {
+    if (isSessionsLoaded && isCasesLoaded && cases && cases.length > 0) {
       syncAutoSessionsToFirestore(cases, users);
     }
-  }, [cases, users]);
+  }, [cases, users, isSessionsLoaded, isCasesLoaded]);
 
   const handleSetTasks = async (value: React.SetStateAction<LegalTask[]>) => {
     const nextTasks = typeof value === 'function' ? value(tasks) : value;
@@ -1011,8 +1040,16 @@ export default function App() {
         const existing = findMatchingSession(currentCaseSessions, expected, updated, cases);
         if (existing) {
           const merged = mergeSessionData(existing, expected);
-          mergedAutoSessions.push(merged);
-          await updateFirestoreDoc('sessions', existing.id, merged);
+          // Migrate to deterministic expected.id and remove obsolete legacy ID
+          if (existing.id !== expected.id) {
+            merged.id = expected.id;
+            mergedAutoSessions.push(merged);
+            await addFirestoreDoc('sessions', merged, expected.id);
+            await deleteFirestoreDoc('sessions', existing.id);
+          } else {
+            mergedAutoSessions.push(merged);
+            await updateFirestoreDoc('sessions', existing.id, merged);
+          }
         } else {
           mergedAutoSessions.push(expected);
           await addFirestoreDoc('sessions', expected, expected.id);
@@ -1055,9 +1092,11 @@ export default function App() {
         }
       }
 
-      if (updated.nextHearingDate) {
+      // Do NOT create generic trial sessions for investigation cases (they are already handled by detention renewals above)
+      if (updated.nextHearingDate && !updated.isInvestigationActive) {
         const normCaseDate = normalizeHearingDate(updated.nextHearingDate);
-        const hasSessionOnDate = sessions.some(s => s.caseId === updated.id && normalizeHearingDate(s.date) === normCaseDate);
+        const hasSessionOnDate = mergedAutoSessions.some(s => normalizeHearingDate(s.date) === normCaseDate) ||
+          sessions.some(s => s.caseId === updated.id && normalizeHearingDate(s.date) === normCaseDate);
         if (!hasSessionOnDate) {
           // Check if there is an un-decided pending manual session whose date was changed in this case edit
           const pendingNonDecided = sessions.find(s => s.caseId === updated.id && s.status === 'pending' && !s.decision && !isAutoGeneratedSessionId(s.id));
@@ -1445,7 +1484,7 @@ export default function App() {
             const newSessionId = isExpert
               ? `session-expert-next-${parentCase.id}-${normNextDate}`
               : isDetention
-              ? `session-detention-next-${parentCase.id}-${normNextDate}`
+              ? getDetentionSessionId(parentCase.id, normNextDate)
               : `session-next-${parentCase.id}-${normNextDate}`;
 
             const newUpcomingSession: HearingSession = {

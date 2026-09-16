@@ -14,6 +14,7 @@ import {
   Plus
 } from 'lucide-react';
 import { Case, DetentionRenewalRecord, User as AppUser } from '../types';
+import { normalizeHearingDate } from '../utils/hearingSync';
 
 export const DETENTION_DECISION_OPTIONS = [
   'حبس ٤ أيام',
@@ -214,6 +215,9 @@ export const DetentionRenewalsModal: React.FC<DetentionRenewalsModalProps> = ({
 
     setIsSaving(true);
     try {
+      const normSessionDate = normalizeHearingDate(sessionDate);
+      const normNextRenewalDate = nextRenewalDate ? normalizeHearingDate(nextRenewalDate) : undefined;
+
       let finalDecision = decision;
       if (decision === 'إخلاء سبيل بكفالة' && bailAmount.trim()) {
         finalDecision = `إخلاء سبيل بكفالة قدرها ${bailAmount.trim()} ج.م`;
@@ -226,13 +230,13 @@ export const DetentionRenewalsModal: React.FC<DetentionRenewalsModalProps> = ({
       
       const newRecord: DetentionRenewalRecord = {
         id: recordId,
-        date: sessionDate,
-        renewalDate: sessionDate,
+        date: normSessionDate,
+        renewalDate: normSessionDate,
         authority: currentAuthority,
         decision: finalDecision,
         durationDays,
         duration,
-        nextRenewalDate: nextRenewalDate ? nextRenewalDate.trim() : undefined,
+        nextRenewalDate: normNextRenewalDate,
         nextAuthority: nextAuthority ? nextAuthority.trim() : undefined,
         court: caseData.court || caseData.courtFirstInstance || 'النيابة العامة / المحكمة المختصة',
         renewalNumber: editingRecordId
@@ -246,7 +250,9 @@ export const DetentionRenewalsModal: React.FC<DetentionRenewalsModalProps> = ({
         updatedRenewals = (caseData.detentionRenewals || []).map(r => r.id === editingRecordId ? newRecord : r);
       } else {
         // If there is already a record on the exact same date and authority, update it; otherwise append
-        const existingIdx = (caseData.detentionRenewals || []).findIndex(r => (r.date || r.renewalDate) === sessionDate);
+        const existingIdx = (caseData.detentionRenewals || []).findIndex(r => 
+          normalizeHearingDate(r.date || r.renewalDate) === normSessionDate
+        );
         if (existingIdx >= 0) {
           updatedRenewals = [...(caseData.detentionRenewals || [])];
           updatedRenewals[existingIdx] = newRecord;
@@ -267,12 +273,16 @@ export const DetentionRenewalsModal: React.FC<DetentionRenewalsModalProps> = ({
         ...caseData,
         isInvestigationActive: true,
         detentionRenewals: updatedRenewals,
-        // If nextRenewalDate is set, update case nextHearingDate
-        ...(nextRenewalDate ? {
-          nextHearingDate: nextRenewalDate,
+        // If nextRenewalDate is set, update case nextHearingDate; if not, clear it so it doesn't linger on today's session date!
+        ...(normNextRenewalDate ? {
+          nextHearingDate: normNextRenewalDate,
           nextHearingTime: '09:00',
-          nextHearingSubject: `جلسة تجديد حبس احتياطي (${nextAuthority})`
-        } : {})
+          nextHearingSubject: `جلسة تجديد حبس احتياطي (${nextAuthority || 'النيابة العامة / المحكمة المختصة'})`
+        } : {
+          nextHearingDate: undefined,
+          nextHearingTime: undefined,
+          nextHearingSubject: undefined
+        })
       };
 
       await onUpdateCase(updatedCase);

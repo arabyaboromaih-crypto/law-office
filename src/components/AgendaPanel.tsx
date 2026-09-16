@@ -10,7 +10,7 @@ import {
   ChevronRight, ChevronLeft, CheckCircle2, AlertCircle, RefreshCw, X, FileText, Camera, Plus, Edit, FolderOpen, Trash2,
   Sparkles, Filter, ShieldAlert, CheckCircle, TrendingUp, Layers, MapPin, UserCheck, Scale, Building, Lock
 } from 'lucide-react';
-import { extractHearingDate, deduplicateSessions } from '../utils/hearingSync';
+import { extractHearingDate, deduplicateSessions, normalizeHearingDate } from '../utils/hearingSync';
 import { toAr } from '../utils/arabicNumbers';
 import { CourtSelect } from '../utils/courts';
 import { useBackHandler } from '../utils/navigationManager';
@@ -389,9 +389,10 @@ export default function AgendaPanel({
     if (hasRecordedDecision) return false;
 
     // Also check if another record for the same case on the same date has already recorded a decision
+    const normDate = normalizeHearingDate(s.date);
     const hasDecisionOnSameDate = sessions.some(other => 
       other.caseId === s.caseId && 
-      other.date === s.date && 
+      normalizeHearingDate(other.date) === normDate && 
       ((!!other.decision && other.decision.trim() !== '') || other.status === 'completed')
     );
     if (hasDecisionOnSameDate) return false;
@@ -519,8 +520,9 @@ export default function AgendaPanel({
   const handleOpenOutcome = (s: HearingSession) => {
     const parentCase = cases.find(c => c.id === s.caseId);
     const isDet = isDetentionSession(s, parentCase, cases);
-    if (isDet && parentCase && parentCase.isInvestigationActive) {
-      setDetentionModalCase(parentCase);
+    if (isDet && parentCase) {
+      const effectiveParentCase = parentCase.isInvestigationActive ? parentCase : { ...parentCase, isInvestigationActive: true };
+      setDetentionModalCase(effectiveParentCase);
       setDetentionModalInitialDate(s.date);
       return;
     }
