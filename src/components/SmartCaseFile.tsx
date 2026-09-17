@@ -115,6 +115,12 @@ export default function SmartCaseFile({
                 <span>ملف مكتب رقم: <strong className="text-slate-200">{localCase.officeFileNo || 'غير محدد'}</strong></span>
                 <span>•</span>
                 <span>أول درجة: <strong className="text-slate-200">{localCase.caseNumberFirstInstance} لسنة {localCase.caseYearFirstInstance}</strong></span>
+                {localCase.type === 'جنايات' && localCase.totalCaseNumber && (
+                  <>
+                    <span>•</span>
+                    <span>الرقم الكلي: <strong className="text-amber-400 font-mono font-bold">{localCase.totalCaseNumber}</strong></span>
+                  </>
+                )}
                 <span>•</span>
                 <span>نوع النزاع: <strong className="text-slate-200">{localCase.type}</strong></span>
               </p>
@@ -553,7 +559,7 @@ function OverviewTab({
   const [degree, setDegree] = useState<LitigationDegree>(localCase.degree || 'أول درجة');
   
   // Standard list of types, check if type is there
-  const standardTypes = ['جنائي', 'جنح', 'جنح طفل', 'جنح مرور', 'جنح مالية', 'جنح اقتصادية', 'تهرب ضريبي', 'ادارى', 'مخالفات', 'مدني', 'تجاري', 'تجارى', 'عمال', 'تعويضات', 'إيجارات', 'أحوال شخصية', 'صحة توقيع', 'مجلس الدولة', 'تنفيذ', 'إشكالات', 'منازعات تنفيذ'];
+  const standardTypes = ['جنايات', 'جنائي', 'جنح', 'جنح طفل', 'جنح مرور', 'جنح مالية', 'جنح اقتصادية', 'تهرب ضريبي', 'ادارى', 'مخالفات', 'مدني', 'تجاري', 'تجارى', 'عمال', 'تعويضات', 'إيجارات', 'أحوال شخصية', 'صحة توقيع', 'مجلس الدولة', 'تنفيذ', 'إشكالات', 'منازعات تنفيذ'];
   const [caseType, setCaseType] = useState<string>(() => {
     if (localCase.type && standardTypes.includes(localCase.type)) return localCase.type;
     return 'أخرى';
@@ -564,6 +570,7 @@ function OverviewTab({
   });
 
   const [officeFileNo, setOfficeFileNo] = useState(localCase.officeFileNo || '');
+  const [totalCaseNumber, setTotalCaseNumber] = useState<string>(localCase.totalCaseNumber || '');
   const [court, setCourt] = useState(localCase.court || '');
   const [circuit, setCircuit] = useState(localCase.circuit || '');
 
@@ -662,6 +669,7 @@ function OverviewTab({
       setCircuit1st(localCase.circuitFirstInstance || '');
       setCaseNo1st(localCase.caseNumberFirstInstance || '');
       setCaseYear1st(localCase.caseYearFirstInstance || '');
+      setTotalCaseNumber(localCase.totalCaseNumber || '');
       setCourt2nd(localCase.courtSecondInstance || '');
       setVenue2nd(localCase.venueSecondInstance || '');
       setCircuit2nd(localCase.circuitSecondInstance || '');
@@ -842,6 +850,7 @@ function OverviewTab({
       officeFileNo: officeFileNo || undefined,
       caseNumberFirstInstance: caseNo1st,
       caseYearFirstInstance: caseYear1st,
+      totalCaseNumber: actualCaseType === 'جنايات' ? (totalCaseNumber.trim() || undefined) : undefined,
       caseNumberSecondInstance: caseNo2nd || undefined,
       caseYearSecondInstance: caseYear2nd || undefined,
       cassationNumber: cassationNumber || undefined,
@@ -958,6 +967,12 @@ function OverviewTab({
                 <p><strong>موضوع الدعوى:</strong> {localCase.subject || 'لم يدون موضوع الدعوى القضائية بعد.'}</p>
                 <p><strong>درجة التقاضي الحالية:</strong> {effStage.degreeLabel || 'غير محدد'}</p>
                 <p><strong>نوع القضية:</strong> {localCase.type || 'غير محدد'}</p>
+                {localCase.type === 'جنايات' && localCase.totalCaseNumber && (
+                  <p className="bg-amber-50 text-amber-950 px-2.5 py-1.5 rounded-xl border border-amber-200/80 font-medium">
+                    <strong>الرقم الكلي (محكمة الجنايات):</strong>{' '}
+                    <span className="font-mono font-black text-amber-900 mr-1">{localCase.totalCaseNumber}</span>
+                  </p>
+                )}
                 <p><strong>الموكل الرئيسي:</strong> {localCase.clientName}</p>
                 <p><strong>الخصم الحالي:</strong> {localCase.opponent?.name || 'غير متوفر'}</p>
                 {localCase.opponent?.lawyer && <p><strong>محامي الخصم:</strong> {localCase.opponent.lawyer}</p>}
@@ -1298,6 +1313,7 @@ function OverviewTab({
                       onChange={(e) => setCaseType(e.target.value)}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-3 focus:ring-amber-500/15 focus:border-amber-500 transition-all font-sans cursor-pointer"
                     >
+                      <option value="جنايات">جنايات</option>
                       <option value="جنائي">جنائي</option>
                       <option value="جنح">جنح</option>
                       <option value="جنح طفل">جنح طفل</option>
@@ -1393,6 +1409,29 @@ function OverviewTab({
                   </label>
                 </div>
 
+                {caseType === 'جنايات' && (
+                  <div className="mt-4 p-3 bg-amber-50/70 border border-amber-200/90 rounded-2xl animate-in fade-in slide-in-from-top-2 duration-200">
+                    <FormField label="الرقم الكلي (أمام محكمة الجنايات)" isMono>
+                      <div className="relative">
+                        <span className="absolute right-3 top-2.5 text-amber-700 text-xs font-bold font-mono">
+                          كلي
+                        </span>
+                        <input
+                          type="text"
+                          placeholder="مثال: 1250 لسنة 2026 كلي شمال القاهرة"
+                          value={totalCaseNumber}
+                          onChange={(e) => setTotalCaseNumber(e.target.value)}
+                          className="w-full pr-12 pl-3 py-2 bg-white border border-amber-300 rounded-xl text-xs focus:outline-none focus:ring-3 focus:ring-amber-500/20 focus:border-amber-500 transition-all font-mono text-left"
+                          dir="ltr"
+                        />
+                      </div>
+                    </FormField>
+                    <p className="text-[11px] text-amber-800/90 font-medium mt-1.5">
+                      الرقم الكلي للقضية أمام محكمة الجنايات، مع الاحتفاظ برقم القضية أمام أول درجة أدناه دون استبداله.
+                    </p>
+                  </div>
+                )}
+
                 {caseType === 'أخرى' && (
                   <div className="mt-4">
                     <FormField label="اكتب نوع القضية المخصص" required>
@@ -1409,7 +1448,7 @@ function OverviewTab({
               </FormCard>
 
               <FormCard title="أولاً: مرحلة أول درجة" icon={Gavel}>
-                <FormGrid cols={5}>
+                <FormGrid cols={caseType === 'جنايات' ? 6 : 5}>
                   <FormField label="المحكمة">
                     <CourtSelect
                       value={court1st}
@@ -1457,6 +1496,18 @@ function OverviewTab({
                       dir="ltr"
                     />
                   </FormField>
+                  {caseType === 'جنايات' && (
+                    <FormField label="الرقم الكلي" isMono>
+                      <input
+                        type="text"
+                        placeholder="الرقم الكلي"
+                        value={totalCaseNumber}
+                        onChange={(e) => setTotalCaseNumber(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-amber-50/50 border border-amber-300 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-3 focus:ring-amber-500/15 focus:border-amber-500 transition-all text-left font-mono font-bold text-amber-950"
+                        dir="ltr"
+                      />
+                    </FormField>
+                  )}
                 </FormGrid>
               </FormCard>
 
@@ -1638,7 +1689,7 @@ function OverviewTab({
                   </FormField>
                 </FormGrid>
 
-                {(caseType === 'جنائي' || caseType === 'جنح' || caseType === 'جنح طفل' || caseType === 'جنح مرور' || caseType === 'جنح مالية' || caseType === 'جنح اقتصادية' || caseType === 'تهرب ضريبي' || caseType === 'ادارى' || caseType === 'مخالفات') && (
+                {(caseType === 'جنايات' || caseType === 'جنائي' || caseType === 'جنح' || caseType === 'جنح طفل' || caseType === 'جنح مرور' || caseType === 'جنح مالية' || caseType === 'جنح اقتصادية' || caseType === 'تهرب ضريبي' || caseType === 'ادارى' || caseType === 'مخالفات') && (
                   <div className="mt-4">
                     <FormField label="اسم السيد عضو النيابة العامة المسؤول عن المحضر">
                       <input
@@ -3881,6 +3932,12 @@ function PrintableReport({ caseData, sessions, isPreview = false }: { caseData: 
                 <td className="p-2 bg-slate-50 font-bold text-slate-700 w-1/6">محكمة ودائرة أول درجة:</td>
                 <td className="p-2 w-2/6">{caseData.courtFirstInstance || caseData.court || 'غير محدد'} - د/ {caseData.circuitFirstInstance || caseData.circuit || 'غير محدد'} {caseData.venueFirstInstance ? `(${caseData.venueFirstInstance})` : ''}</td>
               </tr>
+              {caseData.type === 'جنايات' && caseData.totalCaseNumber && (
+                <tr className="border-b border-slate-100 bg-amber-50/50">
+                  <td className="p-2 bg-amber-100/50 font-black text-amber-900">الرقم الكلي (الجنايات):</td>
+                  <td className="p-2 font-black text-amber-950 font-mono" colSpan={3}>{caseData.totalCaseNumber}</td>
+                </tr>
+              )}
               <tr className="border-b border-slate-100">
                 <td className="p-2 bg-slate-50 font-bold text-slate-700">رقم الاستئناف:</td>
                 <td className="p-2 font-semibold">{caseData.caseNumberSecondInstance ? `${caseData.caseNumberSecondInstance} لسنة ${caseData.caseYearSecondInstance || ''}` : 'غير مقيد أو قيد التحضير'}</td>

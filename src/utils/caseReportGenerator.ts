@@ -851,7 +851,7 @@ export function generateCaseReportHTML(
             <div class="header-center">
               <div class="report-main-title">تقرير شامل عن القضية</div>
               <div class="ornament">✧ ⚖ ✧</div>
-              <div class="case-badge-pill">رقم القضية: ${effStage.caseNumber || c.caseNumberFirstInstance} لسنة ${effStage.caseYear || c.caseYearFirstInstance} (${c.type} - ${effStage.degreeLabel})</div>
+              <div class="case-badge-pill">رقم القضية: ${effStage.caseNumber || c.caseNumberFirstInstance} لسنة ${effStage.caseYear || c.caseYearFirstInstance}${c.type === 'جنايات' && c.totalCaseNumber ? ` | الرقم الكلي: ${c.totalCaseNumber}` : ''} (${c.type} - ${effStage.degreeLabel})</div>
             </div>
 
             <div class="header-left">
@@ -946,6 +946,7 @@ export function generateCaseReportHTML(
                   ${assignedLawyer?.phone ? `<div>• <strong>هاتف المحامي:</strong> ${assignedLawyer.phone}</div>` : ''}
                   <div>• <strong>معد التقرير:</strong> ${generatedBy}</div>
                   <div>• <strong>رقم الملف الداخلي:</strong> <span style="font-family: monospace; font-weight: 800; color: #b45309;">${c.officeFileNo || 'R-' + c.caseNumberFirstInstance}</span></div>
+                  ${c.type === 'جنايات' && c.totalCaseNumber ? `<div>• <strong>الرقم الكلي (الجنايات):</strong> <span style="font-family: monospace; font-weight: 800; color: #b45309;">${c.totalCaseNumber}</span></div>` : ''}
                 </div>
               </div>
 

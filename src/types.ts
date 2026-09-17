@@ -138,6 +138,7 @@ export interface User {
 }
 
 export type CaseType =
+  | 'جنايات'
   | 'جنائي'
   | 'جنح'
   | 'جنح طفل'
@@ -348,6 +349,7 @@ export interface Case {
   officeFileNo?: string; // رقم الملف بالمكتب
   caseNumberFirstInstance: string; // رقم أول درجة
   caseYearFirstInstance: string; // سنة أول درجة
+  totalCaseNumber?: string; // الرقم الكلي للقضية (أمام محكمة الجنايات)
   caseNumberSecondInstance?: string; // رقم ثاني درجة
   caseYearSecondInstance?: string; // سنة ثاني درجة
   cassationNumber?: string; // رقم طعن النقض

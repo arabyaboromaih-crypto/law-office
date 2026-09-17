@@ -475,6 +475,7 @@ export default function CasesPanel({
   const [officeFileNo, setOfficeFileNo] = useState('');
   const [caseNo1st, setCaseNo1st] = useState('');
   const [caseYear1st, setCaseYear1st] = useState('2026');
+  const [totalCaseNumber, setTotalCaseNumber] = useState('');
   const [caseNo2nd, setCaseNo2nd] = useState('');
   const [caseYear2nd, setCaseYear2nd] = useState('');
   const [cassationNumber, setCassationNumber] = useState('');
@@ -1198,6 +1199,7 @@ export default function CasesPanel({
     setOfficeFileNo('');
     setCaseNo1st('');
     setCaseYear1st('2026');
+    setTotalCaseNumber('');
     setCaseNo2nd('');
     setCaseYear2nd('');
     setCassationNumber('');
@@ -1283,6 +1285,7 @@ export default function CasesPanel({
     setOfficeFileNo(c.officeFileNo || '');
     setCaseNo1st(c.caseNumberFirstInstance);
     setCaseYear1st(c.caseYearFirstInstance);
+    setTotalCaseNumber(c.totalCaseNumber || '');
     setCaseNo2nd(c.caseNumberSecondInstance || '');
     setCaseYear2nd(c.caseYearSecondInstance || '');
     setCassationNumber(c.cassationNumber || '');
@@ -1298,7 +1301,7 @@ export default function CasesPanel({
     setCircuitCass(c.circuitCassation || (c.degree === 'نقض' ? c.circuit : '') || '');
     setShowAppealSection(!!(c.caseNumberSecondInstance || c.courtSecondInstance || c.degree === 'استئناف'));
     setShowCassationSection(!!(c.cassationNumber || c.courtCassation || c.degree === 'نقض'));
-    const standardCaseTypes = ['جنائي', 'جنح', 'جنح طفل', 'جنح مرور', 'جنح مالية', 'جنح اقتصادية', 'تهرب ضريبي', 'ادارى', 'مخالفات', 'مدني', 'تجاري', 'تجارى', 'عمال', 'تعويضات', 'إيجارات', 'أحوال شخصية', 'صحة توقيع', 'مجلس الدولة', 'تنفيذ', 'إشكالات', 'منازعات تنفيذ'];
+    const standardCaseTypes = ['جنايات', 'جنائي', 'جنح', 'جنح طفل', 'جنح مرور', 'جنح مالية', 'جنح اقتصادية', 'تهرب ضريبي', 'ادارى', 'مخالفات', 'مدني', 'تجاري', 'تجارى', 'عمال', 'تعويضات', 'إيجارات', 'أحوال شخصية', 'صحة توقيع', 'مجلس الدولة', 'تنفيذ', 'إشكالات', 'منازعات تنفيذ'];
     if (c.type && standardCaseTypes.includes(c.type)) {
       setCaseType(c.type as CaseType);
       setCustomCaseType('');
@@ -1675,6 +1678,7 @@ export default function CasesPanel({
       officeFileNo: officeFileNo || undefined,
       caseNumberFirstInstance: finalCaseNo1st,
       caseYearFirstInstance: finalCaseYear1st,
+      totalCaseNumber: actualCaseType === 'جنايات' ? (totalCaseNumber.trim() || undefined) : undefined,
       caseNumberSecondInstance: caseNo2nd || undefined,
       caseYearSecondInstance: caseYear2nd || undefined,
       cassationNumber: cassationNumber || undefined,
@@ -2678,6 +2682,7 @@ export default function CasesPanel({
                     className="bg-slate-100/60 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:ring-4 focus:ring-amber-500/10 focus:border-amber-500 focus:bg-white transition-all font-semibold text-slate-700 cursor-pointer appearance-none pr-8 pl-3"
                   >
                     <option value="الكل">جميع الأنواع ⚖️</option>
+                    <option value="جنايات">جنايات</option>
                     <option value="جنائي">جنائي</option>
                     <option value="جنح">جنح</option>
                     <option value="جنح طفل">جنح طفل</option>
@@ -2862,6 +2867,13 @@ export default function CasesPanel({
                             <h4 className="font-extrabold text-slate-900 text-sm leading-tight">
                               رقم أول درجة: <span className="font-mono text-amber-800 font-black">{toAr(c.caseNumberFirstInstance)}</span> لسنة <span className="font-mono text-amber-800 font-black">{toAr(c.caseYearFirstInstance)}</span>
                             </h4>
+
+                            {c.type === 'جنايات' && c.totalCaseNumber && (
+                              <div className="mt-1.5 text-xs text-amber-900 font-bold flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/25 px-2.5 py-1 rounded-lg">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-600" />
+                                <span>الرقم الكلي: <span className="font-mono font-black text-amber-950">{toAr(c.totalCaseNumber)}</span></span>
+                              </div>
+                            )}
                             
                             {c.caseNumberSecondInstance && (
                               <div className="mt-2 text-xs text-slate-600 font-bold flex items-center gap-1.5 border-t border-slate-100 pt-1.5 border-dashed">
@@ -3880,6 +3892,7 @@ export default function CasesPanel({
                       onChange={(e) => setCaseType(e.target.value)}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-3 focus:ring-amber-500/15 focus:border-amber-500 transition-all font-sans"
                     >
+                      <option value="جنايات">جنايات</option>
                       <option value="جنائي">جنائي</option>
                       <option value="جنح">جنح</option>
                       <option value="جنح طفل">جنح طفل</option>
@@ -3978,6 +3991,29 @@ export default function CasesPanel({
                   </label>
                 </div>
 
+                {caseType === 'جنايات' && (
+                  <div className="mt-4 p-3 bg-amber-50/70 border border-amber-200/90 rounded-2xl animate-in fade-in slide-in-from-top-2 duration-200">
+                    <FormField label="الرقم الكلي (أمام محكمة الجنايات)" isMono>
+                      <div className="relative">
+                        <span className="absolute right-3 top-2.5 text-amber-700 text-xs font-bold font-mono">
+                          كلي
+                        </span>
+                        <input
+                          type="text"
+                          placeholder="مثال: 1250 لسنة 2026 كلي شمال القاهرة"
+                          value={totalCaseNumber}
+                          onChange={(e) => setTotalCaseNumber(e.target.value)}
+                          className="w-full pr-12 pl-3 py-2 bg-white border border-amber-300 rounded-xl text-xs focus:outline-none focus:ring-3 focus:ring-amber-500/20 focus:border-amber-500 transition-all font-mono text-left"
+                          dir="ltr"
+                        />
+                      </div>
+                    </FormField>
+                    <p className="text-[11px] text-amber-800/90 font-medium mt-1.5">
+                      الرقم الكلي للقضية أمام محكمة الجنايات، مع الاحتفاظ برقم القضية أمام أول درجة أدناه دون استبداله.
+                    </p>
+                  </div>
+                )}
+
                 {caseType === 'أخرى' && (
                   <div className="mt-4">
                     <FormField label="اكتب نوع القضية المخصص" required>
@@ -3995,7 +4031,7 @@ export default function CasesPanel({
 
               {/* First Instance Card */}
               <FormCard title="أولاً: مرحلة أول درجة" icon={Gavel}>
-                <FormGrid cols={5}>
+                <FormGrid cols={caseType === 'جنايات' ? 6 : 5}>
                   <FormField label="المحكمة">
                     <CourtSelect
                       value={court1st}
@@ -4043,6 +4079,18 @@ export default function CasesPanel({
                       dir="ltr"
                     />
                   </FormField>
+                  {caseType === 'جنايات' && (
+                    <FormField label="الرقم الكلي" isMono>
+                      <input
+                        type="text"
+                        placeholder="الرقم الكلي"
+                        value={totalCaseNumber}
+                        onChange={(e) => setTotalCaseNumber(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-amber-50/50 border border-amber-300 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-3 focus:ring-amber-500/15 focus:border-amber-500 transition-all text-left font-mono font-bold text-amber-950"
+                        dir="ltr"
+                      />
+                    </FormField>
+                  )}
                 </FormGrid>
               </FormCard>
 
@@ -4226,7 +4274,7 @@ export default function CasesPanel({
                   </FormField>
                 </FormGrid>
 
-                {(caseType === 'جنائي' || caseType === 'جنح' || caseType === 'جنح طفل' || caseType === 'جنح مرور' || caseType === 'جنح مالية' || caseType === 'جنح اقتصادية' || caseType === 'تهرب ضريبي' || caseType === 'ادارى' || caseType === 'مخالفات') && (
+                {(caseType === 'جنايات' || caseType === 'جنائي' || caseType === 'جنح' || caseType === 'جنح طفل' || caseType === 'جنح مرور' || caseType === 'جنح مالية' || caseType === 'جنح اقتصادية' || caseType === 'تهرب ضريبي' || caseType === 'ادارى' || caseType === 'مخالفات') && (
                   <div className="mt-4">
                     <FormField label="اسم السيد عضو النيابة العامة المسؤول عن المحضر">
                       <input
