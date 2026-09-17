@@ -2987,6 +2987,23 @@ export default function AgendaPanel({
                     >
                       استمرار الحبس
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDecision('إحالة القضية للمحكمة');
+                        setOutcomeDetentionDurationDays(0);
+                      }}
+                      className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-300 rounded-lg text-[11px] font-black cursor-pointer transition-all flex items-center gap-1"
+                    >
+                      <Gavel className="w-3.5 h-3.5 text-indigo-700" />
+                      <span>إحالة للمحكمة</span>
+                    </button>
+                  </div>
+                )}
+                {isDet && !isModalReadOnly && (decision.includes('إحالة للمحكمة') || decision.includes('إحالة للمحاكمة')) && (
+                  <div className="mt-2 bg-indigo-50 border border-indigo-200 text-indigo-900 p-2.5 rounded-xl text-xs flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-indigo-600 shrink-0" />
+                    <span>سيتم تلقائياً إلغاء جلسات التجديد القادمة وحفظ السجل التاريخي، وتحويل موعد الجلسة القادمة (إن وجد) إلى جلسة محاكمة عادية.</span>
                   </div>
                 )}
               </div>

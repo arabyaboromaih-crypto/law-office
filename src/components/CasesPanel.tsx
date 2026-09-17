@@ -1645,9 +1645,9 @@ export default function CasesPanel({
       };
     }
 
-    const isReferredToCourt = investigationDefendantStatus === 'تمت الإحالة للمحاكمة' || status === 'محالة للمحاكمة الجنائية';
+    const isReferredToCourt = investigationDefendantStatus === 'تمت الإحالة للمحاكمة' || status === 'محالة للمحاكمة الجنائية' || status === 'محالة للمحكمة' || editingCase?.isReferredToCourt === true;
     const updatedCaseStatus = isReferredToCourt 
-      ? 'محالة للمحاكمة الجنائية' 
+      ? 'محالة للمحكمة' 
       : (isInvestigationActive 
           ? 'قيد التحقيق' 
           : ((isReferredToExperts && status === 'متداولة بجلسات المحكمة') ? 'محالة إلى الخبراء' : status));
@@ -1659,7 +1659,7 @@ export default function CasesPanel({
 
     // Resolve next hearing date from nextHearing state or latest detention renewal
     let finalNextHearing = nextHearing;
-    if (isInvestigationActive && detentionRenewals && detentionRenewals.length > 0) {
+    if (isInvestigationActive && !isReferredToCourt && detentionRenewals && detentionRenewals.length > 0) {
       const pendingRenewals = detentionRenewals.filter(r => r.nextRenewalDate || (!r.decision && (r.renewalDate || r.date)));
       if (pendingRenewals.length > 0) {
         const lastRen = pendingRenewals[pendingRenewals.length - 1];
@@ -1729,21 +1729,22 @@ export default function CasesPanel({
       isReferredToExperts: isReferredToExperts,
       expertReferral: expertReferralData,
       isInvestigationActive: !!isInvestigationActive,
+      isReferredToCourt: isReferredToCourt,
       investigationNumber: finalInvestigationNumber || editingCase?.investigationNumber || undefined,
       investigationYear: finalInvestigationYear || editingCase?.investigationYear || undefined,
       investigationAuthority: investigationAuthority || editingCase?.investigationAuthority || undefined,
       investigationStartDate: investigationStartDate || editingCase?.investigationStartDate || undefined,
-      investigationDefendantStatus: investigationDefendantStatus || editingCase?.investigationDefendantStatus || undefined,
+      investigationDefendantStatus: isReferredToCourt ? 'تمت الإحالة للمحاكمة' : (investigationDefendantStatus || editingCase?.investigationDefendantStatus || undefined),
       detentionRenewals: (detentionRenewals && detentionRenewals.length > 0)
         ? detentionRenewals.map((r, idx) => ({
             id: r.id || `ren-${Date.now()}-${idx}`,
             date: r.date || r.renewalDate || '',
             renewalDate: r.renewalDate || r.date || '',
-            nextRenewalDate: r.nextRenewalDate || '',
+            nextRenewalDate: isReferredToCourt ? undefined : (r.nextRenewalDate || ''),
             durationDays: Number(r.durationDays) || 15,
             duration: r.duration || (r.durationDays ? `${r.durationDays} يوم` : '15 يوم'),
             authority: r.authority || 'النيابة العامة',
-            nextAuthority: r.nextAuthority || '',
+            nextAuthority: isReferredToCourt ? undefined : (r.nextAuthority || ''),
             decision: r.decision || '',
             notes: r.notes || ''
           }))

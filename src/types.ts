@@ -367,6 +367,7 @@ export interface Case {
   nextHearingDate?: string;
   nextHearingTime?: string;
   nextHearingCircuit?: string;
+  nextHearingSubject?: string;
   status: string; // حالة القضية (متداولة، محجوزة للحكم، مؤجلة، إلخ)
   clientName: string; // اسم الموكل
   clientId: string;
@@ -405,6 +406,10 @@ export interface Case {
   investigationDefendantStatus?: string;
   detentionRenewals?: DetentionRenewalRecord[];
   investigationNotes?: string;
+
+  // Case Referral to Court (إحالة القضية للمحكمة)
+  isReferredToCourt?: boolean;
+  courtReferralDate?: string;
 
   // Archiving
   isArchived: boolean;
@@ -504,6 +509,7 @@ export interface HearingSession {
   decision?: string; // قرار المحكمة
   nextHearingDate?: string;
   nextHearingCircuit?: string; // الدائرة للجلسة القادمة
+  nextHearingSubject?: string; // موضوع الجلسة القادمة
   whatHappened?: string; // ما تم في الجلسة
   requirements?: string; // المطلوب للجلسة القادمة
   rollPhotoUrl?: string; // صورة رول الجلسة
@@ -524,6 +530,9 @@ export interface HearingSession {
   // Expert Session details (جلسات الخبراء)
   isExpertSession?: boolean;
   expertSessionId?: string;
+
+  // Referral to court indicator
+  isReferredToCourt?: boolean;
 }
 
 export type CaseSession = HearingSession;

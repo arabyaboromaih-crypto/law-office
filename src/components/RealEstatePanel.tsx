@@ -242,8 +242,8 @@ export default function RealEstatePanel({ currentUser }: RealEstatePanelProps) {
   useEffect(() => {
     if (!isDuesLoaded || !tenants || tenants.length === 0) return;
 
-    // Process all tenant lease contracts with valid start/end dates
-    const validContractTenants = tenants.filter(t => t.contractStartDate && t.contractEndDate);
+    // Process all tenant lease contracts with valid start/accounting dates
+    const validContractTenants = tenants.filter(t => t.contractStartDate || t.accountingStartMonth);
 
     // Group items by propertyId and monthYear to compute total property rent first
     interface PropertyMonthGroup {
@@ -267,15 +267,12 @@ export default function RealEstatePanel({ currentUser }: RealEstatePanelProps) {
     const groupsMap = new Map<string, PropertyMonthGroup>();
 
     validContractTenants.forEach(tenant => {
-      // Rule: Accounting starts from accountingStartMonth (or contractStartDate/createdAt)
-      const regDateStr = tenant.accountingStartMonth || tenant.contractStartDate || tenant.createdAt;
+      // Rule: Accounting starts from accountingStartMonth (or contractStartDate)
+      const regDateStr = tenant.accountingStartMonth || tenant.contractStartDate;
       if (!regDateStr) return;
 
       const startDate = new Date(regDateStr);
-      let endDateStr = tenant.contractEndDate;
-      if (tenant.accountingEndMonth && tenant.accountingEndMonth.trim() !== '') {
-        endDateStr = tenant.accountingEndMonth;
-      }
+      let endDateStr = tenant.accountingEndMonth || tenant.contractEndDate || new Date().toISOString().slice(0, 10);
       const endDate = new Date(endDateStr);
       if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return;
 

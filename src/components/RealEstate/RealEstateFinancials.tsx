@@ -25,7 +25,14 @@ import {
   ReCollectionReceipt, RePayout, RePropertyExpense, ReOwnerAdvance, ReAdvanceDeductionEntry,
   ReRentDue, User, ReCommissionStatus, ReRentAdjustment 
 } from '../../types';
-import { getDueCollectionStatus, getDueCollectionDetails, isDueCollected, calculateCommissionFromSettings, getDueCommissionAmount, getPropertyCommissionSettings, getSectionCommissionForPropertyMonth, calculatePropertyStatementsData, calculateOwnerStatementsData, isTenantMonthSuspended, getMatchingCollectionReceipts, isAdvanceDeductedFromEntitlement, getAdvanceDeductedAmount, getAdvanceDeductedFromEntitlementAmount } from './RealEstateData';
+import { 
+  getDueCollectionStatus, getDueCollectionDetails, isDueCollected, 
+  calculateCommissionFromSettings, getDueCommissionAmount, getPropertyCommissionSettings, 
+  getSectionCommissionForPropertyMonth, calculatePropertyStatementsData, 
+  calculateOwnerStatementsData, isTenantMonthSuspended, getMatchingCollectionReceipts, 
+  isAdvanceDeductedFromEntitlement, getAdvanceDeductedAmount, 
+  getAdvanceDeductedFromEntitlementAmount, getApplicableRentAdjustment, formatMonthYearAr 
+} from './RealEstateData';
 import SearchableTenantDropdown from './SearchableTenantDropdown';
 import TenantCollectionReceiptsModal from './TenantCollectionReceiptsModal';
 import { PropertyPayoutReceiptsModal } from './PropertyPayoutReceiptsModal';
@@ -286,8 +293,6 @@ export default function RealEstateFinancials({
   // All financial panels, account statements, reports, and metrics read strictly from validDues.
   // Ignores orphan records (deleted tenants/properties) and eliminates duplicate/phantom entries.
   const validDues = useMemo(() => {
-    if (!dues || dues.length === 0) return [];
-
     const existingTenantIds = new Set(tenants.map(t => t.id));
     const existingTenantNames = new Set(tenants.map(t => (t.fullName || '').trim().toLowerCase()));
     const tenantMap = new Map(tenants.map(t => [t.id, t]));
@@ -304,7 +309,8 @@ export default function RealEstateFinancials({
     });
 
     // 1. Filter out orphaned dues and phantom dues outside the tenant's contract period
-    const activeDues = dues.filter(d => {
+    const rawDues = dues || [];
+    const activeDues = rawDues.filter(d => {
       if (!d || !d.id) return false;
       const matchesTenantId = d.tenantId && existingTenantIds.has(d.tenantId);
       const matchesTenantName = d.tenantName && existingTenantNames.has((d.tenantName || '').trim().toLowerCase());
@@ -318,7 +324,7 @@ export default function RealEstateFinancials({
 
       if (tenant) {
         // Contract date boundaries check: hide phantom dues prior to lease start
-        const regDateStr = tenant.accountingStartMonth || tenant.contractStartDate || tenant.createdAt;
+        const regDateStr = tenant.accountingStartMonth || tenant.contractStartDate;
         if (regDateStr && d.forMonthYear) {
           const startMonthStr = regDateStr.slice(0, 7);
           if (startMonthStr && d.forMonthYear < startMonthStr) {
@@ -357,11 +363,7 @@ export default function RealEstateFinancials({
     // 2. Enrich dues with collection status and apply rent adjustments strictly
     const enrichedDues = activeDues.map(d => {
       // Find matching rent adjustment for this tenant and month if any
-      const matchedAdj = (rentAdjustments || []).find(a => 
-        ((a.tenantId && a.tenantId === d.tenantId) || 
-         (a.tenantName && (a.tenantName || '').trim().toLowerCase() === (d.tenantName || '').trim().toLowerCase())) &&
-        a.forMonthYear === d.forMonthYear
-      );
+      const matchedAdj = getApplicableRentAdjustment(rentAdjustments, d.tenantId, d.tenantName, d.forMonthYear);
 
       const effectiveRent = matchedAdj?.adjustedRentAmount ?? d.adjustedRentAmount ?? d.rentAmount;
       const isAdjusted = !!matchedAdj || !!d.isAdjusted;
@@ -440,8 +442,146 @@ export default function RealEstateFinancials({
       }
     });
 
+    // 4. Include any collection receipts that don't already have a corresponding due entry
+    (collections || []).forEach(c => {
+      if (c && c.status !== 'reverted' && !c.isCancelled && (c.amountPaid || 0) > 0 && c.forMonthYear) {
+        const tenant = (c.tenantId ? tenantMap.get(c.tenantId) : null) ||
+                       (c.tenantName ? tenantNameMap.get((c.tenantName || '').trim().toLowerCase()) : null);
+        const tenantKey = tenant?.id || c.tenantId || (c.tenantName || 't').trim().toLowerCase();
+        const unitKey = tenant?.unitId || c.unitId || c.unitNumber || 'u';
+        const mYKey = c.forMonthYear;
+        const key = `${tenantKey}_${unitKey}_${mYKey}`;
+
+        if (!uniqueDuesMap.has(key)) {
+          const prop = properties.find(p => p.id === (tenant?.propertyId || c.propertyId));
+          const unit = units.find(u => u.id === (tenant?.unitId || c.unitId));
+          const owner = owners.find(o => o.id === (prop?.ownerId || (unit as any)?.ownerId || c.ownerId));
+
+          const matchedAdj = getApplicableRentAdjustment(rentAdjustments, tenantKey, c.tenantName || tenant?.fullName, mYKey);
+          const rentAmt = matchedAdj?.adjustedRentAmount ?? c.amountPaid ?? tenant?.rentAmount ?? unit?.rentValue ?? 0;
+
+          const synthesizedDue: ReRentDue = {
+            id: `receipt-due-${tenantKey}-${mYKey}`,
+            tenantId: tenant?.id || c.tenantId || '',
+            tenantName: tenant?.fullName || c.tenantName || '',
+            propertyId: prop?.id || c.propertyId || '',
+            propertyName: prop?.name || c.propertyName || '',
+            unitId: unit?.id || c.unitId || '',
+            unitNumber: unit?.unitNumber || c.unitNumber || '',
+            ownerId: owner?.id || c.ownerId || '',
+            ownerName: owner?.name || c.ownerName || '',
+            forMonthYear: c.forMonthYear,
+            dueDate: `${c.forMonthYear}-01`,
+            rentAmount: rentAmt,
+            collectedAmount: c.amountPaid,
+            commissionType: 'percentage',
+            commissionValue: 0,
+            commissionAmount: 0,
+            netOwnerAmount: c.amountPaid || 0,
+            status: 'collected',
+            collectionStatus: c.forMonthYear > currentMonthISO ? 'prepaid' : 'collected',
+            payoutStatus: 'pending_payout',
+            monthClosingStatus: 'open',
+            monthNameAr: formatMonthYearAr(c.forMonthYear),
+            paidDate: c.paymentDate,
+            receiptNumber: c.receiptNumber,
+            paymentMethod: c.paymentMethod,
+            isPrepaid: c.forMonthYear > currentMonthISO,
+            isAdjusted: !!matchedAdj,
+            adjustedRentAmount: matchedAdj?.adjustedRentAmount,
+            createdAt: c.createdAt || new Date().toISOString()
+          };
+          uniqueDuesMap.set(key, synthesizedDue);
+        }
+      }
+    });
+
+    // 5. Synthesize any missing contract months for active tenants up to currentMonthISO
+    tenants.forEach(tenant => {
+      const regDateStr = tenant.accountingStartMonth || tenant.contractStartDate;
+      if (!regDateStr) return;
+
+      const startDate = new Date(regDateStr);
+      let endDateStr = tenant.accountingEndMonth || tenant.contractEndDate || currentMonthISO;
+      const endDate = new Date(endDateStr);
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return;
+
+      const unit = units.find(u => u.id === tenant.unitId);
+      const prop = properties.find(p => p.id === (tenant.propertyId || unit?.propertyId));
+      const owner = owners.find(o => o.id === (prop?.ownerId || (unit as any)?.ownerId));
+
+      const curr = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+      const endLimit = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+      const curMonthLimit = new Date();
+      curMonthLimit.setDate(1);
+      const maxLimit = endLimit < curMonthLimit && (!tenant.contractEndDate || tenant.contractEndDate >= currentMonthISO) ? curMonthLimit : endLimit;
+
+      while (curr <= maxLimit) {
+        const year = curr.getFullYear();
+        const month = String(curr.getMonth() + 1).padStart(2, '0');
+        const mY = `${year}-${month}`;
+
+        if (tenant.accountingEndMonth && mY > tenant.accountingEndMonth.slice(0, 7)) break;
+
+        const tenantKey = tenant.id;
+        const unitKey = tenant.unitId || unit?.unitNumber || 'u';
+        const key = `${tenantKey}_${unitKey}_${mY}`;
+
+        if (!uniqueDuesMap.has(key)) {
+          const matchedAdj = getApplicableRentAdjustment(rentAdjustments, tenant.id, tenant.fullName, mY);
+          const effectiveRent = matchedAdj?.adjustedRentAmount ?? tenant.rentAmount ?? unit?.rentValue ?? 0;
+
+          const newDue: ReRentDue = {
+            id: `auto-due-${tenant.id}-${mY}`,
+            tenantId: tenant.id,
+            tenantName: tenant.fullName,
+            propertyId: prop?.id || tenant.propertyId || '',
+            propertyName: prop?.name || '',
+            unitId: unit?.id || tenant.unitId || '',
+            unitNumber: unit?.unitNumber || '',
+            ownerId: owner?.id || '',
+            ownerName: owner?.name || '',
+            forMonthYear: mY,
+            dueDate: `${mY}-01`,
+            rentAmount: effectiveRent,
+            collectedAmount: 0,
+            commissionType: 'percentage',
+            commissionValue: 0,
+            commissionAmount: 0,
+            netOwnerAmount: effectiveRent,
+            status: (mY <= currentMonthISO ? 'overdue' : 'pending') as any,
+            collectionStatus: (mY <= currentMonthISO ? 'overdue' : 'pending_collection') as any,
+            payoutStatus: 'pending_payout',
+            monthClosingStatus: 'open',
+            monthNameAr: formatMonthYearAr(mY),
+            isAdjusted: !!matchedAdj,
+            adjustedRentAmount: matchedAdj?.adjustedRentAmount,
+            createdAt: new Date().toISOString()
+          };
+
+          const details = getDueCollectionDetails(newDue, todayISO, currentMonthISO, collections);
+          if (details.isFullyPaid) {
+            newDue.status = 'collected';
+            newDue.collectionStatus = details.status as any;
+            newDue.collectedAmount = details.totalPaid;
+            newDue.paidDate = details.paymentDate;
+            newDue.receiptNumber = details.receiptNumber;
+          } else if (details.isPartial) {
+            newDue.collectionStatus = 'partial' as any;
+            newDue.collectedAmount = details.totalPaid;
+            newDue.paidDate = details.paymentDate;
+            newDue.receiptNumber = details.receiptNumber;
+          }
+
+          uniqueDuesMap.set(key, newDue);
+        }
+
+        curr.setMonth(curr.getMonth() + 1);
+      }
+    });
+
     return Array.from(uniqueDuesMap.values());
-  }, [dues, tenants, collections, rentAdjustments, todayISO, currentMonthISO]);
+  }, [dues, tenants, collections, rentAdjustments, units, properties, owners, todayISO, currentMonthISO]);
 
   // Rent Collections Tab Specific States
   const [rentFilterMode, setRentFilterMode] = useState<'uncollected' | 'collected' | 'all'>('all');
@@ -2976,19 +3116,6 @@ export default function RealEstateFinancials({
   useBackHandler(!!propertyTenantsModalGroup, () => setPropertyTenantsModalGroup(null));
   useBackHandler(!!ownerPayoutModalGroup, () => setOwnerPayoutModalGroup(null));
   useBackHandler(currentTab === 'tenant_statements' && selectedTenantId !== 'all', () => setSelectedTenantId('all'));
-
-  const formatMonthYearAr = (myStr: string) => {
-    if (!myStr) return '';
-    if (myStr === 'all' || myStr.includes('all')) return 'جميع الشهور';
-    if (!myStr.includes('-')) return myStr;
-    const [y, m] = myStr.split('-');
-    const months: Record<string, string> = {
-      '01': 'يناير', '02': 'فبراير', '03': 'مارس', '04': 'أبريل',
-      '05': 'مايو', '06': 'يونيو', '07': 'يوليو', '08': 'أغسطس',
-      '09': 'سبتمبر', '10': 'أكتوبر', '11': 'نوفمبر', '12': 'ديسمبر'
-    };
-    return `${months[m] || m} ${y}`;
-  };
 
   const handleOpenReportPreview = (type?: ReportType) => {
     if (type) setModalReportType(type);
@@ -7250,121 +7377,194 @@ export default function RealEstateFinancials({
           {(() => {
             const currentMonthISO = new Date().toISOString().slice(0, 7);
 
-            // Filter dues according to selection and matching rules
+            const currentTenantObj = selectedTenantId !== 'all' ? tenants.find(t => t.id === selectedTenantId) : null;
+            const currentTenantUnit = units.find(u => u.id === currentTenantObj?.unitId);
+            const currentTenantProp = properties.find(p => p.id === (currentTenantObj?.propertyId || currentTenantUnit?.propertyId));
+            const currentTenantOwner = owners.find(o => o.id === (currentTenantProp?.ownerId || (currentTenantUnit as any)?.ownerId));
+            const currentUnitObj = currentTenantUnit;
+            const currentPropObj = currentTenantProp;
+            const currentOwnerObj = currentTenantOwner;
+            const ownerNameStr = currentTenantOwner?.name || (currentTenantOwner as any)?.fullName || 'غير محدد';
+
+            // 1. Calculate Single Tenant full chronological ledger with prepayment rollover and running cumulative balance
+            const tenantDuesAll = selectedTenantId !== 'all'
+              ? validDues
+                  .filter(d => {
+                    const matchId = d.tenantId === selectedTenantId;
+                    const matchName = d.tenantName && currentTenantObj?.fullName && d.tenantName.trim().toLowerCase() === currentTenantObj.fullName.trim().toLowerCase();
+                    return matchId || matchName;
+                  })
+                  .sort((a, b) => (a.forMonthYear || '').localeCompare(b.forMonthYear || ''))
+              : [];
+
+            let carriedCredit = 0;
+            let cumulativeRunningBalance = 0;
+
+            const tenantLedgerEntries = tenantDuesAll.map(d => {
+              const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
+              const rentDue = d.rentAmount || 0;
+              const receiptsTotalPaid = details.totalPaid;
+              const isFutureMonth = !!(d.forMonthYear && d.forMonthYear > currentMonthISO);
+
+              let appliedRolledOverCredit = 0;
+              let surplusGeneratedThisMonth = 0;
+
+              if (receiptsTotalPaid > rentDue) {
+                surplusGeneratedThisMonth = receiptsTotalPaid - rentDue;
+                carriedCredit += surplusGeneratedThisMonth;
+              } else if (receiptsTotalPaid < rentDue && carriedCredit > 0) {
+                const needed = rentDue - receiptsTotalPaid;
+                appliedRolledOverCredit = Math.min(needed, carriedCredit);
+                carriedCredit -= appliedRolledOverCredit;
+              }
+
+              const totalEffectivePaid = receiptsTotalPaid + appliedRolledOverCredit;
+              const remainingForMonth = Math.max(0, rentDue - totalEffectivePaid);
+
+              const revertedColl = collections.find(c => 
+                (c.status === 'reverted' || c.isCancelled) &&
+                c.tenantId === d.tenantId &&
+                (c.forMonthYear === d.forMonthYear || (c.paymentDate && c.paymentDate.slice(0, 7) === d.forMonthYear))
+              );
+              const isReverted = !!revertedColl || !!d.lastRevertDate;
+
+              let statusBadge: 'collected' | 'partial' | 'overdue' | 'prepaid' | 'pending';
+              let statusText: string;
+              let statusColorClass: string;
+
+              if (isReverted && remainingForMonth > 0) {
+                statusBadge = 'overdue';
+                statusText = 'مرجوع عن التحصيل ⚠️';
+                statusColorClass = 'bg-amber-500/20 text-amber-300 border-amber-500/40';
+              } else if (totalEffectivePaid >= rentDue && rentDue > 0) {
+                if (isFutureMonth) {
+                  statusBadge = 'prepaid';
+                  statusText = 'مدفوع مسبقًا ✨';
+                  statusColorClass = 'bg-amber-500/20 text-amber-300 border-amber-400/40';
+                } else {
+                  statusBadge = 'collected';
+                  statusText = appliedRolledOverCredit > 0 && receiptsTotalPaid < rentDue
+                    ? 'مسدد (بترحيل دفع مسبق)'
+                    : 'مسدد بالكامل';
+                  statusColorClass = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
+                }
+              } else if (totalEffectivePaid > 0 && totalEffectivePaid < rentDue) {
+                statusBadge = 'partial';
+                statusText = `مسدد جزئيًا (متبقي ${remainingForMonth.toLocaleString('ar-EG')} ج.م)`;
+                statusColorClass = 'bg-amber-500/20 text-amber-300 border-amber-500/40';
+              } else {
+                if ((d.dueDate && d.dueDate <= todayISO) || (d.forMonthYear && d.forMonthYear <= currentMonthISO)) {
+                  statusBadge = 'overdue';
+                  statusText = 'غير مسدد (متأخر)';
+                  statusColorClass = 'bg-rose-500/15 text-rose-400 border-rose-500/30';
+                } else {
+                  statusBadge = 'pending';
+                  statusText = 'بانتظار الاستحقاق';
+                  statusColorClass = 'bg-slate-700/50 text-[#9EA7B8] border-slate-600/40';
+                }
+              }
+
+              cumulativeRunningBalance += remainingForMonth;
+
+              const calculateDelayDays = () => {
+                const targetDateStr = d.dueDate || (d.forMonthYear ? `${d.forMonthYear}-01` : todayISO);
+                if (targetDateStr >= todayISO) return 0;
+                const dueMs = new Date(targetDateStr).getTime();
+                const todayMs = new Date(todayISO).getTime();
+                const diff = Math.floor((todayMs - dueMs) / (1000 * 60 * 60 * 24));
+                return diff > 0 ? diff : 0;
+              };
+
+              return {
+                ...d,
+                rentDue,
+                receiptsTotalPaid,
+                appliedRolledOverCredit,
+                surplusGeneratedThisMonth,
+                remainingForMonth,
+                totalEffectivePaid,
+                statusBadge,
+                statusText,
+                statusColorClass,
+                cumulativeRunningBalance,
+                receiptDetails: details,
+                isReverted,
+                revertedColl,
+                delayDays: calculateDelayDays()
+              };
+            });
+
+            // 2. Filter dues for Consolidated All-Tenants View according to selection and matching rules
             const filteredTenantDues = validDues.filter(d => {
               const matchesProperty = selectedPropertyId === 'all' || d.propertyId === selectedPropertyId;
               const matchesTenant = selectedTenantId === 'all' 
                 ? matchesProperty 
-                : d.tenantId === selectedTenantId;
-
-              const tenantObj = selectedTenantId !== 'all' ? tenants.find(t => t.id === selectedTenantId) : null;
-              const tenantRegMonthISO = tenantObj?.createdAt 
-                ? tenantObj.createdAt.slice(0, 7) 
-                : (tenantObj?.contractStartDate ? tenantObj.contractStartDate.slice(0, 7) : '');
+                : (d.tenantId === selectedTenantId || (d.tenantName && currentTenantObj?.fullName && d.tenantName.trim().toLowerCase() === currentTenantObj.fullName.trim().toLowerCase()));
 
               const matchesMonth = selectedMonthYear === 'all' || d.forMonthYear === selectedMonthYear;
-              const matchesFromMonth = tenantFromMonth 
-                ? (d.forMonthYear && d.forMonthYear >= tenantFromMonth)
-                : (!tenantRegMonthISO || (d.forMonthYear && d.forMonthYear >= tenantRegMonthISO));
+              const matchesFromMonth = !tenantFromMonth || (d.forMonthYear && d.forMonthYear >= tenantFromMonth);
               const matchesToMonth = !tenantToMonth || (d.forMonthYear && d.forMonthYear <= tenantToMonth);
 
               const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
               const isCollected = details.isFullyPaid;
               const cStatus = details.status;
 
-              // Rule: Include all past/current months (up to current month) AND ONLY paid reserve/future months
-              const isCurrentOrPast = !d.forMonthYear || d.forMonthYear <= currentMonthISO;
-              const isPaidReserveFuture = d.forMonthYear && d.forMonthYear > currentMonthISO && isCollected;
-
-              const matchesTimeFrame = tenantToMonth 
-                ? (matchesFromMonth && matchesToMonth) 
-                : (matchesFromMonth && (isCurrentOrPast || isPaidReserveFuture));
-
               let matchesStatus = true;
               if (collectionFilter === 'paid') matchesStatus = isCollected;
               if (collectionFilter === 'unpaid') matchesStatus = !isCollected;
               if (collectionFilter === 'overdue') matchesStatus = cStatus === 'overdue' && !isCollected;
 
-              return matchesProperty && matchesTenant && matchesMonth && matchesTimeFrame && matchesStatus;
+              return matchesProperty && matchesTenant && matchesMonth && matchesFromMonth && matchesToMonth && matchesStatus;
             });
 
-            // Sort chronologically (asc) first to compute exact running balance
-            const sortedAscDues = [...filteredTenantDues].sort((a, b) => (a.forMonthYear || '').localeCompare(b.forMonthYear || ''));
-
+            // 3. Four Summary Metrics Calculation (accurately synchronized for single tenant or all tenants)
             let sumRequired = 0;
             let sumCollected = 0;
             let sumRemaining = 0;
             let countPaidMonths = 0;
             let countUnpaidMonths = 0;
 
-            let cumulativeBalance = 0;
-            const duesWithCalculatedBalances = sortedAscDues.map(d => {
-              const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
-              const revertedCollection = collections.find(c => 
-                (c.status === 'reverted' || c.isCancelled) &&
-                c.tenantId === d.tenantId &&
-                (c.forMonthYear === d.forMonthYear || (c.paymentDate && c.paymentDate.slice(0, 7) === d.forMonthYear))
-              );
+            if (selectedTenantId !== 'all') {
+              const activeEntriesForMetrics = tenantLedgerEntries.filter(e => {
+                if (tenantFromMonth && e.forMonthYear && e.forMonthYear < tenantFromMonth) return false;
+                if (tenantToMonth && e.forMonthYear && e.forMonthYear > tenantToMonth) return false;
+                if (selectedMonthYear && selectedMonthYear !== 'all' && e.forMonthYear !== selectedMonthYear) return false;
+                if (collectionFilter === 'paid') return e.statusBadge === 'collected' || e.statusBadge === 'prepaid';
+                if (collectionFilter === 'unpaid') return e.remainingForMonth > 0;
+                if (collectionFilter === 'overdue') return e.statusBadge === 'overdue';
+                return true;
+              });
 
-              const cStatus = details.status;
-              const isCollected = details.isFullyPaid;
-              const paidAmt = details.totalPaid;
-              const remainingAmt = details.remainingAmount;
-              const paidDateVal = details.paymentDate || '';
-              const receiptNoVal = details.receiptNumber || '';
-              const paymentMethodVal = details.paymentMethod || '';
+              activeEntriesForMetrics.forEach(e => {
+                sumRequired += e.rentDue;
+                sumCollected += e.receiptsTotalPaid;
+                sumRemaining += e.remainingForMonth;
+                if (e.remainingForMonth === 0 && e.rentDue > 0) {
+                  countPaidMonths++;
+                } else if (e.remainingForMonth > 0 && (!e.forMonthYear || e.forMonthYear <= currentMonthISO)) {
+                  countUnpaidMonths++;
+                }
+              });
+            } else {
+              filteredTenantDues.forEach(d => {
+                const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
+                sumRequired += d.rentAmount || 0;
+                sumCollected += details.totalPaid;
+                sumRemaining += details.remainingAmount;
+                if (details.isFullyPaid) {
+                  countPaidMonths++;
+                } else if (!d.forMonthYear || d.forMonthYear <= currentMonthISO) {
+                  countUnpaidMonths++;
+                }
+              });
+            }
 
-              sumRequired += d.rentAmount;
-              sumCollected += paidAmt;
-              sumRemaining += remainingAmt;
+            // Tenant Status badge calculation
+            const overdueMonthsCount = selectedTenantId !== 'all'
+              ? tenantLedgerEntries.filter(e => e.remainingForMonth > 0 && (!e.forMonthYear || e.forMonthYear <= currentMonthISO)).length
+              : 0;
 
-              if (isCollected) {
-                countPaidMonths++;
-              } else {
-                countUnpaidMonths++;
-              }
-
-              let computedStatus: 'collected' | 'partial' | 'unpaid' = 'unpaid';
-              if (isCollected) {
-                computedStatus = 'collected';
-              } else if (details.isPartial) {
-                computedStatus = 'partial';
-              } else {
-                computedStatus = 'unpaid';
-              }
-
-              cumulativeBalance += remainingAmt;
-
-              return {
-                ...d,
-                cStatus,
-                isCollected,
-                revertedCollection,
-                paidAmt,
-                paidDate: paidDateVal,
-                receiptNumber: receiptNoVal,
-                paymentMethod: paymentMethodVal,
-                remainingAmt,
-                computedStatus,
-                runningBalance: cumulativeBalance
-              };
-            });
-
-            // Apply selected display sort order (asc / desc)
-            const finalDisplayDues = tenantSortOrder === 'desc' 
-              ? [...duesWithCalculatedBalances].reverse() 
-              : duesWithCalculatedBalances;
-
-            const currentTenantObj = tenants.find(t => t.id === selectedTenantId);
-            const currentTenantUnit = units.find(u => u.id === currentTenantObj?.unitId);
-            const currentTenantProp = properties.find(p => p.id === (currentTenantObj?.propertyId || currentTenantUnit?.propertyId));
-            const currentTenantOwner = owners.find(o => o.id === (currentTenantProp?.ownerId || (currentTenantUnit as any)?.ownerId));
-            const ownerNameStr = currentTenantOwner?.name || 'غير محدد';
-
-            const tenantUncollectedDues = filteredTenantDues.filter(d => getDueCollectionStatus(d, todayISO, currentMonthISO, collections) !== 'collected');
-            const overdueMonthsCount = tenantUncollectedDues.length;
-
-            let tenantStatusText = 'منتظم بالسداد';
+            let tenantStatusText = 'منتظم بالسداد ✅';
             let tenantStatusClass = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
             if (overdueMonthsCount >= 3) {
               tenantStatusText = 'متعثر عن السداد 🚨';
@@ -7374,12 +7574,11 @@ export default function RealEstateFinancials({
               tenantStatusClass = 'bg-amber-500/15 text-amber-400 border-amber-500/30';
             }
 
-            const monthlyRentVal = currentTenantObj?.rentAmount || currentTenantUnit?.rentValue || (filteredTenantDues[0]?.rentAmount || 0);
-            const tenantRegMonthISO = currentTenantObj?.createdAt 
-              ? currentTenantObj.createdAt.slice(0, 7) 
-              : (currentTenantObj?.contractStartDate ? currentTenantObj.contractStartDate.slice(0, 7) : '—');
+            const monthlyRentVal = currentTenantObj?.rentAmount || currentTenantUnit?.rentValue || (tenantDuesAll[0]?.rentAmount || 0);
+            const contractStartStr = currentTenantObj?.contractStartDate || currentTenantObj?.accountingStartMonth || '—';
+            const contractEndStr = currentTenantObj?.contractEndDate || currentTenantObj?.accountingEndMonth || '—';
             const accountingPeriodStr = currentTenantObj 
-              ? `من ${tenantRegMonthISO} (تاريخ القيد بالنظام) إلى ${currentMonthISO} (مستحق السداد)`
+              ? `من ${contractStartStr} إلى ${contractEndStr !== '—' ? contractEndStr : currentMonthISO}`
               : '—';
 
             return (
@@ -7432,8 +7631,8 @@ export default function RealEstateFinancials({
                           <button
                             type="button"
                             onClick={() => {
-                              const uncollected = duesWithCalculatedBalances.filter(d => !d.isCollected);
-                              const target = uncollected[0] || duesWithCalculatedBalances[duesWithCalculatedBalances.length - 1];
+                              const uncollected = tenantLedgerEntries.filter(d => d.remainingForMonth > 0);
+                              const target = uncollected[0] || tenantLedgerEntries[tenantLedgerEntries.length - 1];
                               if (target) {
                                 onCollectRent(target);
                               }
@@ -7448,7 +7647,7 @@ export default function RealEstateFinancials({
                           <button
                             type="button"
                             onClick={() => {
-                              const lastDue = duesWithCalculatedBalances[duesWithCalculatedBalances.length - 1];
+                              const lastDue = tenantLedgerEntries[tenantLedgerEntries.length - 1];
                               if (lastDue) {
                                 onCollectRent(lastDue);
                               }
@@ -7800,168 +7999,26 @@ export default function RealEstateFinancials({
                 ) : (
                   /* SINGLE TENANT DETAILED STATEMENT WITH UNIFIED MONTHLY LEDGER & SUB-TABS */
                   (() => {
-                    const todayISO = new Date().toISOString().slice(0, 10);
-                    const currentMonthISO = new Date().toISOString().slice(0, 7);
-
-                    const currentTenantObj = tenants.find(t => t.id === selectedTenantId);
-                    const currentUnitObj = units.find(u => u.id === currentTenantObj?.unitId);
-                    const currentPropObj = properties.find(p => p.id === (currentTenantObj?.propertyId || currentUnitObj?.propertyId));
-                    const currentOwnerObj = owners.find(o => o.id === (currentPropObj?.ownerId || (currentUnitObj as any)?.ownerId));
-
-                    // Source of truth: Read strictly from validDues + physically saved collection receipts
-                    const tenantDuesRaw = validDues
-                      .filter(d => d.tenantId === selectedTenantId);
-
-                    const knownMonths = new Set(tenantDuesRaw.map(d => d.forMonthYear).filter(Boolean));
-                    const extraDuesFromReceipts: ReRentDue[] = [];
-                    (collections || []).forEach(c => {
-                      if (c.tenantId === selectedTenantId && c.status !== 'reverted' && !c.isCancelled && c.forMonthYear && !knownMonths.has(c.forMonthYear)) {
-                        knownMonths.add(c.forMonthYear);
-                        extraDuesFromReceipts.push({
-                          id: `receipt-due-${selectedTenantId}-${c.forMonthYear}`,
-                          tenantId: selectedTenantId,
-                          tenantName: currentTenantObj?.fullName || c.tenantName || '',
-                          propertyId: currentTenantObj?.propertyId || c.propertyId || '',
-                          propertyName: currentPropObj?.name || c.propertyName || '',
-                          unitId: currentTenantObj?.unitId || c.unitId || '',
-                          unitNumber: currentUnitObj?.unitNumber || c.unitNumber || '',
-                          ownerId: currentOwnerObj?.id || c.ownerId || '',
-                          ownerName: currentOwnerObj?.name || c.ownerName || '',
-                          forMonthYear: c.forMonthYear,
-                          dueDate: `${c.forMonthYear}-01`,
-                          rentAmount: c.amountPaid || currentTenantObj?.rentAmount || currentUnitObj?.rentValue || 0,
-                          collectedAmount: c.amountPaid,
-                          commissionType: 'percentage',
-                          commissionValue: 0,
-                          commissionAmount: 0,
-                          netOwnerAmount: c.amountPaid || 0,
-                          status: 'collected',
-                          collectionStatus: c.forMonthYear > currentMonthISO ? 'prepaid' : 'collected',
-                          payoutStatus: 'pending_payout',
-                          monthClosingStatus: 'open',
-                          monthNameAr: formatMonthYearAr(c.forMonthYear),
-                          paidDate: c.paymentDate,
-                          receiptNumber: c.receiptNumber,
-                          paymentMethod: c.paymentMethod,
-                          isPrepaid: c.forMonthYear > currentMonthISO,
-                          createdAt: c.createdAt || new Date().toISOString()
-                        });
-                      }
-                    });
-
-                    const tenantDuesAll = [...tenantDuesRaw, ...extraDuesFromReceipts]
-                      .sort((a, b) => (a.forMonthYear || '').localeCompare(b.forMonthYear || ''));
-
-                    // Calculate chronological ledger with prepayment rollover and running cumulative balance
-                    let carriedCredit = 0;
-                    let cumulativeRunningBalance = 0;
-
-                    const tenantLedgerEntries = tenantDuesAll.map(d => {
-                      const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
-                      const rentDue = d.rentAmount || 0;
-                      const receiptsTotalPaid = details.totalPaid;
-                      const isFutureMonth = !!(d.forMonthYear && d.forMonthYear > currentMonthISO);
-
-                      let appliedRolledOverCredit = 0;
-                      let surplusGeneratedThisMonth = 0;
-
-                      if (receiptsTotalPaid > rentDue) {
-                        surplusGeneratedThisMonth = receiptsTotalPaid - rentDue;
-                        carriedCredit += surplusGeneratedThisMonth;
-                      } else if (receiptsTotalPaid < rentDue && carriedCredit > 0) {
-                        const needed = rentDue - receiptsTotalPaid;
-                        appliedRolledOverCredit = Math.min(needed, carriedCredit);
-                        carriedCredit -= appliedRolledOverCredit;
-                      }
-
-                      const totalEffectivePaid = receiptsTotalPaid + appliedRolledOverCredit;
-                      const remainingForMonth = Math.max(0, rentDue - totalEffectivePaid);
-
-                      const revertedColl = collections.find(c => 
-                        (c.status === 'reverted' || c.isCancelled) &&
-                        c.tenantId === d.tenantId &&
-                        (c.forMonthYear === d.forMonthYear || (c.paymentDate && c.paymentDate.slice(0, 7) === d.forMonthYear))
-                      );
-                      const isReverted = !!revertedColl || !!d.lastRevertDate;
-
-                      let statusBadge: 'collected' | 'partial' | 'overdue' | 'prepaid' | 'pending';
-                      let statusText: string;
-                      let statusColorClass: string;
-
-                      if (isReverted && remainingForMonth > 0) {
-                        statusBadge = 'overdue';
-                        statusText = 'مرجوع عن التحصيل ⚠️';
-                        statusColorClass = 'bg-amber-500/20 text-amber-300 border-amber-500/40';
-                      } else if (totalEffectivePaid >= rentDue && rentDue > 0) {
-                        if (isFutureMonth) {
-                          statusBadge = 'prepaid';
-                          statusText = 'مدفوع مسبقًا ✨';
-                          statusColorClass = 'bg-amber-500/20 text-amber-300 border-amber-400/40';
-                        } else {
-                          statusBadge = 'collected';
-                          statusText = appliedRolledOverCredit > 0 && receiptsTotalPaid < rentDue
-                            ? 'مسدد (بترحيل دفع مسبق)'
-                            : 'مسدد بالكامل';
-                          statusColorClass = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
-                        }
-                      } else if (totalEffectivePaid > 0 && totalEffectivePaid < rentDue) {
-                        statusBadge = 'partial';
-                        statusText = `مسدد جزئيًا (متبقي ${remainingForMonth.toLocaleString('ar-EG')} ج.م)`;
-                        statusColorClass = 'bg-amber-500/20 text-amber-300 border-amber-500/40';
-                      } else {
-                        if ((d.dueDate && d.dueDate <= todayISO) || (d.forMonthYear && d.forMonthYear <= currentMonthISO)) {
-                          statusBadge = 'overdue';
-                          statusText = 'غير مسدد (متأخر)';
-                          statusColorClass = 'bg-rose-500/15 text-rose-400 border-rose-500/30';
-                        } else {
-                          statusBadge = 'pending';
-                          statusText = 'بانتظار الاستحقاق';
-                          statusColorClass = 'bg-slate-700/50 text-[#9EA7B8] border-slate-600/40';
-                        }
-                      }
-
-                      cumulativeRunningBalance += remainingForMonth;
-
-                      const calculateDelayDays = () => {
-                        const targetDateStr = d.dueDate || (d.forMonthYear ? `${d.forMonthYear}-01` : todayISO);
-                        if (targetDateStr >= todayISO) return 0;
-                        const dueMs = new Date(targetDateStr).getTime();
-                        const todayMs = new Date(todayISO).getTime();
-                        const diff = Math.floor((todayMs - dueMs) / (1000 * 60 * 60 * 24));
-                        return diff > 0 ? diff : 0;
-                      };
-
-                      return {
-                        ...d,
-                        rentDue,
-                        receiptsTotalPaid,
-                        appliedRolledOverCredit,
-                        surplusGeneratedThisMonth,
-                        remainingForMonth,
-                        totalEffectivePaid,
-                        statusBadge,
-                        statusText,
-                        statusColorClass,
-                        cumulativeRunningBalance,
-                        receiptDetails: details,
-                        isReverted,
-                        revertedColl,
-                        delayDays: calculateDelayDays()
-                      };
+                    // Filter ledger entries by selected date range and month
+                    const filteredByDateLedger = tenantLedgerEntries.filter(e => {
+                      if (tenantFromMonth && e.forMonthYear && e.forMonthYear < tenantFromMonth) return false;
+                      if (tenantToMonth && e.forMonthYear && e.forMonthYear > tenantToMonth) return false;
+                      if (selectedMonthYear && selectedMonthYear !== 'all' && e.forMonthYear !== selectedMonthYear) return false;
+                      return true;
                     });
 
                     // Sub-tab filtered sets
-                    const collectedMonths = tenantLedgerEntries.filter(e => e.statusBadge === 'collected');
-                    const overdueMonths = tenantLedgerEntries.filter(e => e.statusBadge === 'overdue' || e.statusBadge === 'partial');
-                    const prepaidMonths = tenantLedgerEntries.filter(e => e.statusBadge === 'prepaid');
+                    const collectedMonths = filteredByDateLedger.filter(e => e.statusBadge === 'collected');
+                    const overdueMonths = filteredByDateLedger.filter(e => e.statusBadge === 'overdue' || e.statusBadge === 'partial');
+                    const prepaidMonths = filteredByDateLedger.filter(e => e.statusBadge === 'prepaid');
 
                     const displayedEntries = singleTenantTab === 'ledger'
-                      ? (tenantSortOrder === 'desc' ? [...tenantLedgerEntries].reverse() : tenantLedgerEntries)
+                      ? (tenantSortOrder === 'desc' ? [...filteredByDateLedger].reverse() : filteredByDateLedger)
                       : singleTenantTab === 'overdue'
-                        ? overdueMonths
+                        ? (tenantSortOrder === 'desc' ? [...overdueMonths].reverse() : overdueMonths)
                         : singleTenantTab === 'collected'
-                          ? collectedMonths
-                          : prepaidMonths;
+                          ? (tenantSortOrder === 'desc' ? [...collectedMonths].reverse() : collectedMonths)
+                          : (tenantSortOrder === 'desc' ? [...prepaidMonths].reverse() : prepaidMonths);
 
                     const formatPaymentMethod = (method?: string) => {
                       if (!method) return 'نقداً (كاش)';
