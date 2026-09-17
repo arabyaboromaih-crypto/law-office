@@ -2779,7 +2779,7 @@ export default function CasesPanel({
 
                 // Determine tag styling for Case Type
                 let typeBadgeStyle = 'bg-slate-50 text-slate-700 border-slate-200';
-                if (c.type === 'جنائي' || c.type === 'جنح' || c.type === 'جنح طفل' || c.type === 'جنح مرور' || c.type === 'جنح مالية' || c.type === 'جنح اقتصادية' || c.type === 'تهرب ضريبي' || c.type === 'ادارى') {
+                if (c.type === 'جنايات' || c.type === 'جنائي' || c.type === 'جنح' || c.type === 'جنح طفل' || c.type === 'جنح مرور' || c.type === 'جنح مالية' || c.type === 'جنح اقتصادية' || c.type === 'تهرب ضريبي' || c.type === 'ادارى') {
                   typeBadgeStyle = 'bg-rose-50 text-rose-700 border-rose-200/50';
                 } else if (c.type === 'إيجارات') {
                   typeBadgeStyle = 'bg-amber-50 text-amber-850 border-amber-200/50';

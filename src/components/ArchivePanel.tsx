@@ -2050,6 +2050,7 @@ export default function ArchivePanel({
                         onChange={(e) => setCaseType(e.target.value)}
                         className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-sans"
                       >
+                        <option value="جنايات">جنايات</option>
                         <option value="جنائي">جنائي</option>
                         <option value="جنح">جنح</option>
                         <option value="جنح طفل">جنح طفل</option>
