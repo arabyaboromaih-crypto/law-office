@@ -7500,7 +7500,18 @@ export default function RealEstateFinancials({
               tenantStatusClass = 'bg-amber-500/15 text-amber-400 border-amber-500/30';
             }
 
-            const monthlyRentVal = currentTenantObj?.rentAmount || currentTenantUnit?.rentValue || (filteredTenantDues[0]?.rentAmount || 0);
+            // Source of truth: Derive active monthly rent value directly from the Rent Collection dues (validDues)
+            const tenantDuesForRent = validDues.filter(d => 
+              d.tenantId === selectedTenantId || 
+              (currentTenantObj && d.tenantName && d.tenantName.trim().toLowerCase() === (currentTenantObj.fullName || '').trim().toLowerCase())
+            );
+            // Prioritize due for current month, then due matching selected month/year filter, then latest due in filtered dues, then latest recorded due in validDues, then fallbacks
+            const targetDueForRent = tenantDuesForRent.find(d => d.forMonthYear === currentMonthISO) ||
+              (selectedMonthYear !== 'all' ? tenantDuesForRent.find(d => d.forMonthYear === selectedMonthYear) : null) ||
+              (filteredTenantDues.length > 0 ? filteredTenantDues[filteredTenantDues.length - 1] : null) ||
+              (tenantDuesForRent.length > 0 ? tenantDuesForRent[tenantDuesForRent.length - 1] : null);
+
+            const monthlyRentVal = targetDueForRent?.rentAmount || (filteredTenantDues[0]?.rentAmount) || currentTenantObj?.rentAmount || currentTenantUnit?.rentValue || 0;
             const tenantRegMonthISO = currentTenantObj?.createdAt 
               ? currentTenantObj.createdAt.slice(0, 7) 
               : (currentTenantObj?.contractStartDate ? currentTenantObj.contractStartDate.slice(0, 7) : '—');
@@ -7825,8 +7836,10 @@ export default function RealEstateFinancials({
                               });
                               const overdueMonthsCount = unpaidDues.length;
 
+                              const currentMonthDue = tenantDuesAll.find(d => d.forMonthYear === currentMonthISO);
+                              const selectedPeriodDue = selectedMonthYear !== 'all' ? tenantDuesAll.find(d => d.forMonthYear === selectedMonthYear) : null;
                               const latestTenantDue = tenantDuesAll.length > 0 ? tenantDuesAll[tenantDuesAll.length - 1] : null;
-                              const tRentCurrent = latestTenantDue?.rentAmount || t.rentAmount || tUnit?.rentValue || 0;
+                              const tRentCurrent = currentMonthDue?.rentAmount || selectedPeriodDue?.rentAmount || latestTenantDue?.rentAmount || t.rentAmount || tUnit?.rentValue || 0;
                               const tTotalReq = tenantDuesAll.reduce((s, d) => s + (d.rentAmount || 0), 0);
                               const tTotalColl = tenantDuesAll.reduce((s, d) => {
                                 const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);

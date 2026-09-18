@@ -578,7 +578,10 @@ export function generateRealEstateReportHTML(params: {
     tenantFinancialBadgeClass = 'badge-pending';
   }
 
-  const tenantMonthlyRentAmount = (filteredDues.length > 0 ? (filteredDues[filteredDues.length - 1]?.rentAmount || filteredDues[0]?.rentAmount) : 0) || selectedTenantObj?.rentAmount || tenantUnit?.rentValue || 0;
+  const tenantCurrentMonthDue = filteredDues.find(d => d.forMonthYear === currentMonthISO);
+  const tenantSelectedPeriodDue = selectedMonthYear !== 'all' ? filteredDues.find(d => d.forMonthYear === selectedMonthYear) : null;
+  const tenantLatestDue = filteredDues.length > 0 ? filteredDues[filteredDues.length - 1] : null;
+  const tenantMonthlyRentAmount = tenantCurrentMonthDue?.rentAmount || tenantSelectedPeriodDue?.rentAmount || tenantLatestDue?.rentAmount || (filteredDues[0]?.rentAmount) || selectedTenantObj?.rentAmount || tenantUnit?.rentValue || 0;
 
   // Commissions calculations for office_commissions report
   const commItems: Array<{
@@ -1466,8 +1469,10 @@ export function generateRealEstateReportHTML(params: {
                 });
                 const overdueMonthsCount = unpaidDues.length;
 
+                const currentMonthDue = tenantDuesInPeriod.find(d => d.forMonthYear === currentMonthISO);
+                const selectedPeriodDue = selectedMonthYear !== 'all' ? tenantDuesInPeriod.find(d => d.forMonthYear === selectedMonthYear) : null;
                 const latestTenantDue = tenantDuesInPeriod.length > 0 ? tenantDuesInPeriod[tenantDuesInPeriod.length - 1] : null;
-                const tRentCurrent = latestTenantDue?.rentAmount || t.rentAmount || tUnit?.rentValue || 0;
+                const tRentCurrent = currentMonthDue?.rentAmount || selectedPeriodDue?.rentAmount || latestTenantDue?.rentAmount || t.rentAmount || tUnit?.rentValue || 0;
                 const tTotalReq = tenantDuesInPeriod.reduce((s, d) => s + (d.rentAmount || 0), 0);
                 const tTotalColl = tenantDuesInPeriod.reduce((s, d) => {
                   const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
