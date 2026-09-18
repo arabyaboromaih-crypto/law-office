@@ -3480,14 +3480,16 @@ export default function RealEstateFinancials({
                 </div>
               </div>
 
-              {/* Card 4: إجمالي المحصل */}
+              {/* Card 4: المبلغ المحصل */}
               <div className="bg-gradient-to-br from-[#132238] to-[#0A121E] backdrop-blur-md p-4 rounded-2xl border border-emerald-500/35 shadow-xl relative overflow-hidden flex items-center justify-between">
                 <div>
-                  <span className="text-xs text-emerald-200 font-extrabold block mb-1">إجمالي المحصل</span>
+                  <span className="text-xs text-emerald-200 font-extrabold block mb-1">المبلغ المحصل</span>
                   <p className="text-2xl font-black text-emerald-400 font-mono tracking-tight">
                     {totalCollectedAmount.toLocaleString('ar-EG')} <span className="text-xs text-emerald-300 font-sans font-black">ج.م</span>
                   </p>
-                  <span className="text-[10px] text-emerald-300 block mt-1 font-bold">المبالغ المحصلة فعلياً</span>
+                  <span className="text-[10px] text-emerald-300 block mt-1 font-bold">
+                    {isAllMonths || isAllYears ? 'المبالغ المحصلة فعلياً' : `المحصل لشهر (${formatMonthYearAr(targetMonthYear)})`}
+                  </span>
                 </div>
                 <div className="p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 shadow-sm">
                   <CheckCircle className="w-5 h-5 stroke-[2.2]" />
