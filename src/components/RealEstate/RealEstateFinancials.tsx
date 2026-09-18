@@ -7378,12 +7378,12 @@ export default function RealEstateFinancials({
 
             // Filter dues according to selection and matching rules
             const filteredTenantDues = validDues.filter(d => {
+              const tenantObj = selectedTenantId !== 'all' ? tenants.find(t => t.id === selectedTenantId) : null;
               const matchesProperty = selectedPropertyId === 'all' || d.propertyId === selectedPropertyId;
               const matchesTenant = selectedTenantId === 'all' 
                 ? matchesProperty 
-                : d.tenantId === selectedTenantId;
+                : (d.tenantId === selectedTenantId || (tenantObj && d.tenantName && d.tenantName.trim().toLowerCase() === (tenantObj.fullName || '').trim().toLowerCase()));
 
-              const tenantObj = selectedTenantId !== 'all' ? tenants.find(t => t.id === selectedTenantId) : null;
               const tenantRegMonthISO = tenantObj?.createdAt 
                 ? tenantObj.createdAt.slice(0, 7) 
                 : (tenantObj?.contractStartDate ? tenantObj.contractStartDate.slice(0, 7) : '');
@@ -7812,7 +7812,8 @@ export default function RealEstateFinancials({
                               const tProp = properties.find(p => p.id === (t.propertyId || tUnit?.propertyId));
                               const tOwner = owners.find(o => o.id === (tProp?.ownerId || (tUnit as any)?.ownerId));
                               const tenantDuesAll = validDues.filter(d => {
-                                if (d.tenantId !== t.id) return false;
+                                const matchesTenant = d.tenantId === t.id || (d.tenantName && (d.tenantName || '').trim().toLowerCase() === (t.fullName || '').trim().toLowerCase());
+                                if (!matchesTenant) return false;
                                 if (tenantFromMonth && d.forMonthYear && d.forMonthYear < tenantFromMonth) return false;
                                 if (tenantToMonth && d.forMonthYear && d.forMonthYear > tenantToMonth) return false;
                                 return true;
@@ -7894,7 +7895,13 @@ export default function RealEstateFinancials({
 
                     // Source of truth: Read strictly from re_dues dataset (validDues array)
                     const tenantDuesAll = validDues
-                      .filter(d => d.tenantId === selectedTenantId)
+                      .filter(d => {
+                        const matchesTenant = d.tenantId === selectedTenantId || (currentTenantObj && d.tenantName && (d.tenantName || '').trim().toLowerCase() === (currentTenantObj.fullName || '').trim().toLowerCase());
+                        if (!matchesTenant) return false;
+                        if (tenantFromMonth && d.forMonthYear && d.forMonthYear < tenantFromMonth) return false;
+                        if (tenantToMonth && d.forMonthYear && d.forMonthYear > tenantToMonth) return false;
+                        return true;
+                      })
                       .sort((a, b) => (a.forMonthYear || '').localeCompare(b.forMonthYear || ''));
 
                     // Section 1: الشهور المحصلة
