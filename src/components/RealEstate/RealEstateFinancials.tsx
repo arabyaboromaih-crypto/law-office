@@ -232,7 +232,6 @@ export default function RealEstateFinancials({
   const [tenantFromMonth, setTenantFromMonth] = useState<string>('');
   const [tenantToMonth, setTenantToMonth] = useState<string>('');
   const [tenantSortOrder, setTenantSortOrder] = useState<'asc' | 'desc'>('asc');
-  const [singleTenantTab, setSingleTenantTab] = useState<'ledger' | 'overdue' | 'collected' | 'prepaid'>('ledger');
 
   // Segmented control filter states (لم يتم التحصيل | تم التحصيل | الكل) - Default is 'all'
   const [ownerStatementsFilter, setOwnerStatementsFilter] = useState<'all' | 'uncollected' | 'collected'>('all');
@@ -7377,194 +7376,121 @@ export default function RealEstateFinancials({
           {(() => {
             const currentMonthISO = new Date().toISOString().slice(0, 7);
 
-            const currentTenantObj = selectedTenantId !== 'all' ? tenants.find(t => t.id === selectedTenantId) : null;
-            const currentTenantUnit = units.find(u => u.id === currentTenantObj?.unitId);
-            const currentTenantProp = properties.find(p => p.id === (currentTenantObj?.propertyId || currentTenantUnit?.propertyId));
-            const currentTenantOwner = owners.find(o => o.id === (currentTenantProp?.ownerId || (currentTenantUnit as any)?.ownerId));
-            const currentUnitObj = currentTenantUnit;
-            const currentPropObj = currentTenantProp;
-            const currentOwnerObj = currentTenantOwner;
-            const ownerNameStr = currentTenantOwner?.name || (currentTenantOwner as any)?.fullName || 'غير محدد';
-
-            // 1. Calculate Single Tenant full chronological ledger with prepayment rollover and running cumulative balance
-            const tenantDuesAll = selectedTenantId !== 'all'
-              ? validDues
-                  .filter(d => {
-                    const matchId = d.tenantId === selectedTenantId;
-                    const matchName = d.tenantName && currentTenantObj?.fullName && d.tenantName.trim().toLowerCase() === currentTenantObj.fullName.trim().toLowerCase();
-                    return matchId || matchName;
-                  })
-                  .sort((a, b) => (a.forMonthYear || '').localeCompare(b.forMonthYear || ''))
-              : [];
-
-            let carriedCredit = 0;
-            let cumulativeRunningBalance = 0;
-
-            const tenantLedgerEntries = tenantDuesAll.map(d => {
-              const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
-              const rentDue = d.rentAmount || 0;
-              const receiptsTotalPaid = details.totalPaid;
-              const isFutureMonth = !!(d.forMonthYear && d.forMonthYear > currentMonthISO);
-
-              let appliedRolledOverCredit = 0;
-              let surplusGeneratedThisMonth = 0;
-
-              if (receiptsTotalPaid > rentDue) {
-                surplusGeneratedThisMonth = receiptsTotalPaid - rentDue;
-                carriedCredit += surplusGeneratedThisMonth;
-              } else if (receiptsTotalPaid < rentDue && carriedCredit > 0) {
-                const needed = rentDue - receiptsTotalPaid;
-                appliedRolledOverCredit = Math.min(needed, carriedCredit);
-                carriedCredit -= appliedRolledOverCredit;
-              }
-
-              const totalEffectivePaid = receiptsTotalPaid + appliedRolledOverCredit;
-              const remainingForMonth = Math.max(0, rentDue - totalEffectivePaid);
-
-              const revertedColl = collections.find(c => 
-                (c.status === 'reverted' || c.isCancelled) &&
-                c.tenantId === d.tenantId &&
-                (c.forMonthYear === d.forMonthYear || (c.paymentDate && c.paymentDate.slice(0, 7) === d.forMonthYear))
-              );
-              const isReverted = !!revertedColl || !!d.lastRevertDate;
-
-              let statusBadge: 'collected' | 'partial' | 'overdue' | 'prepaid' | 'pending';
-              let statusText: string;
-              let statusColorClass: string;
-
-              if (isReverted && remainingForMonth > 0) {
-                statusBadge = 'overdue';
-                statusText = 'مرجوع عن التحصيل ⚠️';
-                statusColorClass = 'bg-amber-500/20 text-amber-300 border-amber-500/40';
-              } else if (totalEffectivePaid >= rentDue && rentDue > 0) {
-                if (isFutureMonth) {
-                  statusBadge = 'prepaid';
-                  statusText = 'مدفوع مسبقًا ✨';
-                  statusColorClass = 'bg-amber-500/20 text-amber-300 border-amber-400/40';
-                } else {
-                  statusBadge = 'collected';
-                  statusText = appliedRolledOverCredit > 0 && receiptsTotalPaid < rentDue
-                    ? 'مسدد (بترحيل دفع مسبق)'
-                    : 'مسدد بالكامل';
-                  statusColorClass = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
-                }
-              } else if (totalEffectivePaid > 0 && totalEffectivePaid < rentDue) {
-                statusBadge = 'partial';
-                statusText = `مسدد جزئيًا (متبقي ${remainingForMonth.toLocaleString('ar-EG')} ج.م)`;
-                statusColorClass = 'bg-amber-500/20 text-amber-300 border-amber-500/40';
-              } else {
-                if ((d.dueDate && d.dueDate <= todayISO) || (d.forMonthYear && d.forMonthYear <= currentMonthISO)) {
-                  statusBadge = 'overdue';
-                  statusText = 'غير مسدد (متأخر)';
-                  statusColorClass = 'bg-rose-500/15 text-rose-400 border-rose-500/30';
-                } else {
-                  statusBadge = 'pending';
-                  statusText = 'بانتظار الاستحقاق';
-                  statusColorClass = 'bg-slate-700/50 text-[#9EA7B8] border-slate-600/40';
-                }
-              }
-
-              cumulativeRunningBalance += remainingForMonth;
-
-              const calculateDelayDays = () => {
-                const targetDateStr = d.dueDate || (d.forMonthYear ? `${d.forMonthYear}-01` : todayISO);
-                if (targetDateStr >= todayISO) return 0;
-                const dueMs = new Date(targetDateStr).getTime();
-                const todayMs = new Date(todayISO).getTime();
-                const diff = Math.floor((todayMs - dueMs) / (1000 * 60 * 60 * 24));
-                return diff > 0 ? diff : 0;
-              };
-
-              return {
-                ...d,
-                rentDue,
-                receiptsTotalPaid,
-                appliedRolledOverCredit,
-                surplusGeneratedThisMonth,
-                remainingForMonth,
-                totalEffectivePaid,
-                statusBadge,
-                statusText,
-                statusColorClass,
-                cumulativeRunningBalance,
-                receiptDetails: details,
-                isReverted,
-                revertedColl,
-                delayDays: calculateDelayDays()
-              };
-            });
-
-            // 2. Filter dues for Consolidated All-Tenants View according to selection and matching rules
+            // Filter dues according to selection and matching rules
             const filteredTenantDues = validDues.filter(d => {
               const matchesProperty = selectedPropertyId === 'all' || d.propertyId === selectedPropertyId;
               const matchesTenant = selectedTenantId === 'all' 
                 ? matchesProperty 
-                : (d.tenantId === selectedTenantId || (d.tenantName && currentTenantObj?.fullName && d.tenantName.trim().toLowerCase() === currentTenantObj.fullName.trim().toLowerCase()));
+                : d.tenantId === selectedTenantId;
+
+              const tenantObj = selectedTenantId !== 'all' ? tenants.find(t => t.id === selectedTenantId) : null;
+              const tenantRegMonthISO = tenantObj?.createdAt 
+                ? tenantObj.createdAt.slice(0, 7) 
+                : (tenantObj?.contractStartDate ? tenantObj.contractStartDate.slice(0, 7) : '');
 
               const matchesMonth = selectedMonthYear === 'all' || d.forMonthYear === selectedMonthYear;
-              const matchesFromMonth = !tenantFromMonth || (d.forMonthYear && d.forMonthYear >= tenantFromMonth);
+              const matchesFromMonth = tenantFromMonth 
+                ? (d.forMonthYear && d.forMonthYear >= tenantFromMonth)
+                : (!tenantRegMonthISO || (d.forMonthYear && d.forMonthYear >= tenantRegMonthISO));
               const matchesToMonth = !tenantToMonth || (d.forMonthYear && d.forMonthYear <= tenantToMonth);
 
               const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
               const isCollected = details.isFullyPaid;
               const cStatus = details.status;
 
+              // Rule: Include all past/current months (up to current month) AND ONLY paid reserve/future months
+              const isCurrentOrPast = !d.forMonthYear || d.forMonthYear <= currentMonthISO;
+              const isPaidReserveFuture = d.forMonthYear && d.forMonthYear > currentMonthISO && isCollected;
+
+              const matchesTimeFrame = tenantToMonth 
+                ? (matchesFromMonth && matchesToMonth) 
+                : (matchesFromMonth && (isCurrentOrPast || isPaidReserveFuture));
+
               let matchesStatus = true;
               if (collectionFilter === 'paid') matchesStatus = isCollected;
               if (collectionFilter === 'unpaid') matchesStatus = !isCollected;
               if (collectionFilter === 'overdue') matchesStatus = cStatus === 'overdue' && !isCollected;
 
-              return matchesProperty && matchesTenant && matchesMonth && matchesFromMonth && matchesToMonth && matchesStatus;
+              return matchesProperty && matchesTenant && matchesMonth && matchesTimeFrame && matchesStatus;
             });
 
-            // 3. Four Summary Metrics Calculation (accurately synchronized for single tenant or all tenants)
+            // Sort chronologically (asc) first to compute exact running balance
+            const sortedAscDues = [...filteredTenantDues].sort((a, b) => (a.forMonthYear || '').localeCompare(b.forMonthYear || ''));
+
             let sumRequired = 0;
             let sumCollected = 0;
             let sumRemaining = 0;
             let countPaidMonths = 0;
             let countUnpaidMonths = 0;
 
-            if (selectedTenantId !== 'all') {
-              const activeEntriesForMetrics = tenantLedgerEntries.filter(e => {
-                if (tenantFromMonth && e.forMonthYear && e.forMonthYear < tenantFromMonth) return false;
-                if (tenantToMonth && e.forMonthYear && e.forMonthYear > tenantToMonth) return false;
-                if (selectedMonthYear && selectedMonthYear !== 'all' && e.forMonthYear !== selectedMonthYear) return false;
-                if (collectionFilter === 'paid') return e.statusBadge === 'collected' || e.statusBadge === 'prepaid';
-                if (collectionFilter === 'unpaid') return e.remainingForMonth > 0;
-                if (collectionFilter === 'overdue') return e.statusBadge === 'overdue';
-                return true;
-              });
+            let cumulativeBalance = 0;
+            const duesWithCalculatedBalances = sortedAscDues.map(d => {
+              const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
+              const revertedCollection = collections.find(c => 
+                (c.status === 'reverted' || c.isCancelled) &&
+                c.tenantId === d.tenantId &&
+                (c.forMonthYear === d.forMonthYear || (c.paymentDate && c.paymentDate.slice(0, 7) === d.forMonthYear))
+              );
 
-              activeEntriesForMetrics.forEach(e => {
-                sumRequired += e.rentDue;
-                sumCollected += e.receiptsTotalPaid;
-                sumRemaining += e.remainingForMonth;
-                if (e.remainingForMonth === 0 && e.rentDue > 0) {
-                  countPaidMonths++;
-                } else if (e.remainingForMonth > 0 && (!e.forMonthYear || e.forMonthYear <= currentMonthISO)) {
-                  countUnpaidMonths++;
-                }
-              });
-            } else {
-              filteredTenantDues.forEach(d => {
-                const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
-                sumRequired += d.rentAmount || 0;
-                sumCollected += details.totalPaid;
-                sumRemaining += details.remainingAmount;
-                if (details.isFullyPaid) {
-                  countPaidMonths++;
-                } else if (!d.forMonthYear || d.forMonthYear <= currentMonthISO) {
-                  countUnpaidMonths++;
-                }
-              });
-            }
+              const cStatus = details.status;
+              const isCollected = details.isFullyPaid;
+              const paidAmt = details.totalPaid;
+              const remainingAmt = details.remainingAmount;
+              const paidDateVal = details.paymentDate || '';
+              const receiptNoVal = details.receiptNumber || '';
+              const paymentMethodVal = details.paymentMethod || '';
 
-            // Tenant Status badge calculation
-            const overdueMonthsCount = selectedTenantId !== 'all'
-              ? tenantLedgerEntries.filter(e => e.remainingForMonth > 0 && (!e.forMonthYear || e.forMonthYear <= currentMonthISO)).length
-              : 0;
+              sumRequired += d.rentAmount;
+              sumCollected += paidAmt;
+              sumRemaining += remainingAmt;
 
-            let tenantStatusText = 'منتظم بالسداد ✅';
+              if (isCollected) {
+                countPaidMonths++;
+              } else {
+                countUnpaidMonths++;
+              }
+
+              let computedStatus: 'collected' | 'partial' | 'unpaid' = 'unpaid';
+              if (isCollected) {
+                computedStatus = 'collected';
+              } else if (details.isPartial) {
+                computedStatus = 'partial';
+              } else {
+                computedStatus = 'unpaid';
+              }
+
+              cumulativeBalance += remainingAmt;
+
+              return {
+                ...d,
+                cStatus,
+                isCollected,
+                revertedCollection,
+                paidAmt,
+                paidDate: paidDateVal,
+                receiptNumber: receiptNoVal,
+                paymentMethod: paymentMethodVal,
+                remainingAmt,
+                computedStatus,
+                runningBalance: cumulativeBalance
+              };
+            });
+
+            // Apply selected display sort order (asc / desc)
+            const finalDisplayDues = tenantSortOrder === 'desc' 
+              ? [...duesWithCalculatedBalances].reverse() 
+              : duesWithCalculatedBalances;
+
+            const currentTenantObj = tenants.find(t => t.id === selectedTenantId);
+            const currentTenantUnit = units.find(u => u.id === currentTenantObj?.unitId);
+            const currentTenantProp = properties.find(p => p.id === (currentTenantObj?.propertyId || currentTenantUnit?.propertyId));
+            const currentTenantOwner = owners.find(o => o.id === (currentTenantProp?.ownerId || (currentTenantUnit as any)?.ownerId));
+            const ownerNameStr = currentTenantOwner?.name || 'غير محدد';
+
+            const tenantUncollectedDues = filteredTenantDues.filter(d => getDueCollectionStatus(d, todayISO, currentMonthISO, collections) !== 'collected');
+            const overdueMonthsCount = tenantUncollectedDues.length;
+
+            let tenantStatusText = 'منتظم بالسداد';
             let tenantStatusClass = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
             if (overdueMonthsCount >= 3) {
               tenantStatusText = 'متعثر عن السداد 🚨';
@@ -7574,11 +7500,12 @@ export default function RealEstateFinancials({
               tenantStatusClass = 'bg-amber-500/15 text-amber-400 border-amber-500/30';
             }
 
-            const monthlyRentVal = currentTenantObj?.rentAmount || currentTenantUnit?.rentValue || (tenantDuesAll[0]?.rentAmount || 0);
-            const contractStartStr = currentTenantObj?.contractStartDate || currentTenantObj?.accountingStartMonth || '—';
-            const contractEndStr = currentTenantObj?.contractEndDate || currentTenantObj?.accountingEndMonth || '—';
+            const monthlyRentVal = currentTenantObj?.rentAmount || currentTenantUnit?.rentValue || (filteredTenantDues[0]?.rentAmount || 0);
+            const tenantRegMonthISO = currentTenantObj?.createdAt 
+              ? currentTenantObj.createdAt.slice(0, 7) 
+              : (currentTenantObj?.contractStartDate ? currentTenantObj.contractStartDate.slice(0, 7) : '—');
             const accountingPeriodStr = currentTenantObj 
-              ? `من ${contractStartStr} إلى ${contractEndStr !== '—' ? contractEndStr : currentMonthISO}`
+              ? `من ${tenantRegMonthISO} (تاريخ القيد بالنظام) إلى ${currentMonthISO} (مستحق السداد)`
               : '—';
 
             return (
@@ -7627,66 +7554,24 @@ export default function RealEstateFinancials({
                           </span>
                         </div>
 
-                        <div className="flex items-center gap-2 flex-wrap shrink-0">
+                        <div className="flex items-center gap-2 shrink-0">
                           <button
-                            type="button"
-                            onClick={() => {
-                              const uncollected = tenantLedgerEntries.filter(d => d.remainingForMonth > 0);
-                              const target = uncollected[0] || tenantLedgerEntries[tenantLedgerEntries.length - 1];
-                              if (target) {
-                                onCollectRent(target);
-                              }
-                            }}
-                            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
-                            title="تسجيل سند تحصيل جديد لهذا المستأجر"
-                          >
-                            <DollarSign className="w-4 h-4" />
-                            <span>تسجيل تحصيل</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const lastDue = tenantLedgerEntries[tenantLedgerEntries.length - 1];
-                              if (lastDue) {
-                                onCollectRent(lastDue);
-                              }
-                            }}
-                            className="px-3.5 py-2 bg-amber-500/20 hover:bg-amber-500/35 text-amber-200 border border-amber-400/40 text-xs font-black rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
-                            title="تسجيل سداد احتياطي / دفع مسبق للأشهر القادمة"
-                          >
-                            <Sparkles className="w-4 h-4 text-amber-300" />
-                            <span>دفع مسبق</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => setTenantReceiptsModalTenant(currentTenantObj)}
-                            className="px-3 py-2 bg-[#08111F] hover:bg-[#132238] text-[#D4A84F] border border-[#D4A84F]/30 text-xs font-black rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
-                            title="عرض سجل سندات التحصيل الصادرة"
-                          >
-                            <Receipt className="w-4 h-4 text-[#D4A84F]" />
-                            <span>سندات التحصيل ({collections.filter(c => c.tenantId === currentTenantObj.id && c.status !== 'reverted' && !c.isCancelled).length})</span>
-                          </button>
-
-                          <button
-                            type="button"
                             onClick={() => handleOpenReportPreview('tenant_statement')}
-                            className="px-3 py-2 bg-[#132238] hover:bg-[#1C2D42] text-[#D4A84F] border border-[#D4A84F]/40 text-xs font-black rounded-xl transition-all shadow-md hover:shadow-[#D4A84F]/10 flex items-center gap-1.5 cursor-pointer"
+                            className="px-3.5 py-2 bg-[#132238] hover:bg-[#1C2D42] text-[#D4A84F] border border-[#D4A84F]/40 text-xs font-black rounded-xl transition-all shadow-md hover:shadow-[#D4A84F]/10 flex items-center gap-1.5 cursor-pointer"
                             title="اطلاع ومعاينة تقرير كشف حساب المستأجر"
                           >
                             <Eye className="w-4 h-4 text-[#D4A84F]" />
                             <span>اطلاع</span>
                           </button>
                           <button
-                            type="button"
                             onClick={() => handlePrintReportDirectly('tenant_statement')}
-                            className="px-3 py-2 bg-gradient-to-r from-[#D4A84F] to-[#C3973E] text-slate-950 font-black text-xs rounded-xl hover:brightness-110 transition-all shadow-lg shadow-[#D4A84F]/20 flex items-center gap-1.5 cursor-pointer"
+                            className="px-3.5 py-2 bg-gradient-to-r from-[#D4A84F] to-[#C3973E] text-slate-950 font-black text-xs rounded-xl hover:brightness-110 transition-all shadow-lg shadow-[#D4A84F]/20 flex items-center gap-1.5 cursor-pointer"
                             title="طباعة تقرير كشف حساب المستأجر"
                           >
                             <Printer className="w-4 h-4 text-slate-950" />
                             <span>طباعة</span>
                           </button>
+
                         </div>
                       </div>
                     </div>
@@ -7997,28 +7882,47 @@ export default function RealEstateFinancials({
                     </div>
                   </div>
                 ) : (
-                  /* SINGLE TENANT DETAILED STATEMENT WITH UNIFIED MONTHLY LEDGER & SUB-TABS */
+                  /* SINGLE TENANT DETAILED BREAKDOWN WITH 3 DISTINCT SECTIONS */
                   (() => {
-                    // Filter ledger entries by selected date range and month
-                    const filteredByDateLedger = tenantLedgerEntries.filter(e => {
-                      if (tenantFromMonth && e.forMonthYear && e.forMonthYear < tenantFromMonth) return false;
-                      if (tenantToMonth && e.forMonthYear && e.forMonthYear > tenantToMonth) return false;
-                      if (selectedMonthYear && selectedMonthYear !== 'all' && e.forMonthYear !== selectedMonthYear) return false;
-                      return true;
+                    const todayISO = new Date().toISOString().slice(0, 10);
+                    const currentMonthISO = new Date().toISOString().slice(0, 7);
+
+                    const currentTenantObj = tenants.find(t => t.id === selectedTenantId);
+                    const currentUnitObj = units.find(u => u.id === currentTenantObj?.unitId);
+                    const currentPropObj = properties.find(p => p.id === (currentTenantObj?.propertyId || currentUnitObj?.propertyId));
+                    const currentOwnerObj = owners.find(o => o.id === (currentPropObj?.ownerId || (currentUnitObj as any)?.ownerId));
+
+                    // Source of truth: Read strictly from re_dues dataset (validDues array)
+                    const tenantDuesAll = validDues
+                      .filter(d => d.tenantId === selectedTenantId)
+                      .sort((a, b) => (a.forMonthYear || '').localeCompare(b.forMonthYear || ''));
+
+                    // Section 1: الشهور المحصلة
+                    const collectedMonths = tenantDuesAll.filter(d => {
+                      const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
+                      return (d.forMonthYear || '') <= currentMonthISO && details.isFullyPaid;
                     });
 
-                    // Sub-tab filtered sets
-                    const collectedMonths = filteredByDateLedger.filter(e => e.statusBadge === 'collected');
-                    const overdueMonths = filteredByDateLedger.filter(e => e.statusBadge === 'overdue' || e.statusBadge === 'partial');
-                    const prepaidMonths = filteredByDateLedger.filter(e => e.statusBadge === 'prepaid');
+                    // Section 2: الشهور المتأخرة وغير المسددة أو المسددة جزئياً
+                    const overdueMonths = tenantDuesAll.filter(d => {
+                      const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
+                      return (d.forMonthYear || '') <= currentMonthISO && !details.isFullyPaid;
+                    });
 
-                    const displayedEntries = singleTenantTab === 'ledger'
-                      ? (tenantSortOrder === 'desc' ? [...filteredByDateLedger].reverse() : filteredByDateLedger)
-                      : singleTenantTab === 'overdue'
-                        ? (tenantSortOrder === 'desc' ? [...overdueMonths].reverse() : overdueMonths)
-                        : singleTenantTab === 'collected'
-                          ? (tenantSortOrder === 'desc' ? [...collectedMonths].reverse() : collectedMonths)
-                          : (tenantSortOrder === 'desc' ? [...prepaidMonths].reverse() : prepaidMonths);
+                    // Section 3: الشهور المسددة مسبقًا (الدفع المسبق / السداد الاحتياطي)
+                    const prepaidMonths = tenantDuesAll.filter(d => {
+                      const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
+                      return (d.forMonthYear || '') > currentMonthISO && details.isFullyPaid;
+                    });
+
+                    const calculateDelayDays = (due: ReRentDue) => {
+                      const targetDateStr = due.dueDate || (due.forMonthYear ? `${due.forMonthYear}-01` : todayISO);
+                      if (targetDateStr >= todayISO) return 0;
+                      const dueMs = new Date(targetDateStr).getTime();
+                      const todayMs = new Date(todayISO).getTime();
+                      const diff = Math.floor((todayMs - dueMs) / (1000 * 60 * 60 * 24));
+                      return diff > 0 ? diff : 0;
+                    };
 
                     const formatPaymentMethod = (method?: string) => {
                       if (!method) return 'نقداً (كاش)';
@@ -8031,442 +7935,111 @@ export default function RealEstateFinancials({
 
                     return (
                       <div className="space-y-6">
-                        {/* Live Synchronization Banner */}
+                        {/* Read-Only Mode Banner */}
                         <div className="bg-[#08111F]/90 p-4 rounded-2xl border border-[#D4A84F]/30 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center text-emerald-400 shrink-0">
-                              <RefreshCw className="w-5 h-5 text-emerald-400" />
+                            <div className="w-10 h-10 rounded-xl bg-[#D4A84F]/10 border border-[#D4A84F]/25 flex items-center justify-center text-[#D4A84F]">
+                              <Lock className="w-5 h-5" />
                             </div>
                             <div>
                               <h4 className="text-xs sm:text-sm font-black text-[#F8F9FB]">
-                                كشف الحساب المالي التفصيلي للمستأجر ({currentTenantObj?.fullName || 'غير محدد'})
+                                كشف حساب تفصيلي للمستأجر ({currentTenantObj?.fullName || 'غير محدد'})
                               </h4>
                               <p className="text-[11px] text-[#9EA7B8] font-bold mt-0.5">
-                                مزامنة سحابية حية ومباشرة مع قسم الإيجارات والتحصيل (Firestore) — سندات التحصيل الفعلية هي المصدر الحصري لإثبات السداد وتحديد المبالغ المسددة والمتبقية وترحيل الدفع المسبق.
+                                نافذة التفاصيل للقراءة فقط والمشتقة مباشرة وحصرياً من قسم الإيجارات والتحصيل (مصدر البيانات الموحد).
                               </p>
                             </div>
                           </div>
                           <button
-                            type="button"
                             onClick={() => setSelectedTenantId('all')}
                             className="px-3.5 py-2 rounded-xl bg-[#D4A84F]/15 hover:bg-[#D4A84F]/25 text-[#D4A84F] border border-[#D4A84F]/30 text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-sm shrink-0"
                           >
                             <ArrowRight className="w-4 h-4" />
-                            <span>الرجوع إلى كشف كافة المستأجرين</span>
+                            <span>الرجوع إلى الكشف المجمع</span>
                           </button>
                         </div>
 
-                        {/* Sub-Navigation Tabs */}
-                        <div className="flex items-center gap-2 p-1.5 bg-[#08111F] rounded-2xl border border-slate-700/50 flex-wrap">
-                          <button
-                            type="button"
-                            onClick={() => setSingleTenantTab('ledger')}
-                            className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
-                              singleTenantTab === 'ledger'
-                                ? 'bg-[#D4A84F] text-slate-950 shadow-md'
-                                : 'text-[#9EA7B8] hover:text-[#F8F9FB] hover:bg-slate-800/40'
-                            }`}
-                          >
-                            <FileText className="w-4 h-4" />
-                            <span>كشف الحساب الشهري الموحد (الجدول المالي الشامل)</span>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-900/30 font-mono">
-                              {tenantLedgerEntries.length} شهر
-                            </span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => setSingleTenantTab('overdue')}
-                            className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
-                              singleTenantTab === 'overdue'
-                                ? 'bg-rose-500 text-white shadow-md'
-                                : 'text-[#9EA7B8] hover:text-[#F8F9FB] hover:bg-slate-800/40'
-                            }`}
-                          >
-                            <AlertTriangle className="w-4 h-4" />
-                            <span>الشهور المتأخرة وغير المسددة</span>
-                            {overdueMonths.length > 0 && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] bg-white/20 font-mono font-black">
-                                {overdueMonths.length}
-                              </span>
-                            )}
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => setSingleTenantTab('collected')}
-                            className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
-                              singleTenantTab === 'collected'
-                                ? 'bg-emerald-600 text-white shadow-md'
-                                : 'text-[#9EA7B8] hover:text-[#F8F9FB] hover:bg-slate-800/40'
-                            }`}
-                          >
-                            <CheckCircle className="w-4 h-4" />
-                            <span>الشهور المحصلة</span>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] bg-white/20 font-mono font-black">
-                              {collectedMonths.length}
-                            </span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => setSingleTenantTab('prepaid')}
-                            className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
-                              singleTenantTab === 'prepaid'
-                                ? 'bg-amber-500 text-slate-950 shadow-md'
-                                : 'text-[#9EA7B8] hover:text-[#F8F9FB] hover:bg-slate-800/40'
-                            }`}
-                          >
-                            <Sparkles className="w-4 h-4" />
-                            <span>الشهور المسددة مسبقًا (الدفع المسبق)</span>
-                            {prepaidMonths.length > 0 && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-950/20 font-mono font-black">
-                                {prepaidMonths.length}
-                              </span>
-                            )}
-                          </button>
-                        </div>
-
-                        {/* TABLE CONTENT */}
-                        <div className="bg-[#132238]/80 backdrop-blur-md rounded-2xl border border-slate-700/50 p-5 space-y-4 shadow-xl">
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-700/50 pb-3">
-                            <div>
-                              <h3 className="text-sm font-black text-[#F8F9FB] flex items-center gap-2">
-                                {singleTenantTab === 'ledger' && <span>الجدول المالي الموحد لكافة الشهور</span>}
-                                {singleTenantTab === 'overdue' && <span className="text-rose-400">الشهور المتأخرة وغير المسددة أو المسددة جزئياً</span>}
-                                {singleTenantTab === 'collected' && <span className="text-emerald-400">الشهور المحصلة والمثبتة بسندات تحصيل</span>}
-                                {singleTenantTab === 'prepaid' && <span className="text-amber-300">الشهور المسددة مسبقاً (الدفع المسبق / السداد الاحتياطي)</span>}
-                              </h3>
-                              <p className="text-[11px] text-[#9EA7B8] font-bold mt-0.5">
-                                إجمالي السجلات المعروضة: {displayedEntries.length} شهر • يتم تحديث ومزامنة البيانات تلقائياً مع قسم الإيجارات والتحصيل.
-                              </p>
+                        {/* ------------------------------------------------------------- */}
+                        {/* SECTION 1: الشهور المحصلة */}
+                        {/* ------------------------------------------------------------- */}
+                        <div className="bg-[#132238]/80 backdrop-blur-md rounded-2xl border border-emerald-500/30 p-5 space-y-4 shadow-xl">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-500/20 pb-3">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                                <CheckCircle className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <h3 className="text-sm font-black text-[#F8F9FB]">1. الشهور المحصلة</h3>
+                                <p className="text-[10px] text-[#9EA7B8] font-bold">جميع الشهور التي تم تحصيل إيجارها فعلياً حتى الشهر الحالي ({currentMonthISO})</p>
+                              </div>
                             </div>
-
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {singleTenantTab === 'collected' && collectedMonths.length > 0 && (
+                            <div className="flex items-center gap-2">
+                              <span className="px-3 py-1 rounded-full text-xs font-black bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                {collectedMonths.length} شهر محصل
+                              </span>
+                              {collectedMonths.length > 0 && (
                                 <button
-                                  type="button"
                                   onClick={() => handleOpenRevertModal(currentTenantObj, currentUnitObj, currentPropObj, currentOwnerObj)}
-                                  className="px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+                                  className="px-3 py-1 rounded-xl bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
                                   title="الرجوع عن تحصيل الأشهر المحصلة"
                                 >
                                   <RefreshCw className="w-3.5 h-3.5" />
                                   <span>الرجوع عن التحصيل</span>
                                 </button>
                               )}
-
-                              {singleTenantTab === 'prepaid' && prepaidMonths.length > 0 && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenRevertPrepaymentModal(currentTenantObj, currentUnitObj, currentPropObj, currentOwnerObj)}
-                                  className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/35 text-amber-200 border border-amber-400/50 text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
-                                  title="الرجوع عن الدفع المسبق للأشهر القادمة"
-                                >
-                                  <RefreshCw className="w-3.5 h-3.5 text-amber-300" />
-                                  <span>الرجوع عن التحصيل المسبق</span>
-                                </button>
-                              )}
-
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const uncollected = tenantLedgerEntries.filter(e => e.remainingForMonth > 0);
-                                  const target = uncollected[0] || tenantLedgerEntries[tenantLedgerEntries.length - 1];
-                                  if (target) onCollectRent(target);
-                                }}
-                                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
-                              >
-                                <DollarSign className="w-3.5 h-3.5" />
-                                <span>تسجيل تحصيل</span>
-                              </button>
                             </div>
                           </div>
 
-                          <div className="overflow-x-auto rounded-xl border border-slate-700/60">
+                          <div className="overflow-x-auto rounded-xl border border-emerald-500/15">
                             <table className="w-full text-right text-xs">
                               <thead>
-                                <tr className="bg-[#08111F]/90 text-[#9EA7B8] font-bold border-b border-slate-700/70 text-[11px]">
+                                <tr className="bg-[#08111F]/90 text-[#9EA7B8] font-bold border-b border-emerald-500/20 text-[11px]">
                                   <th className="p-3 text-center w-10">#</th>
                                   <th className="p-3">الشهر والسنة</th>
-                                  <th className="p-3 text-center">قيمة الإيجار المستحقة</th>
-                                  <th className="p-3 text-center">حالة السداد</th>
-                                  <th className="p-3 text-center">المبالغ المسددة</th>
-                                  <th className="p-3 text-center">الدفع المسبق وترحيله</th>
-                                  <th className="p-3 text-center">المبلغ المتبقي</th>
-                                  <th className="p-3 text-center">الرصيد التراكمي</th>
-                                  <th className="p-3 text-center">سند التحصيل والتاريخ</th>
+                                  <th className="p-3 text-center">قيمة الإيجار</th>
+                                  <th className="p-3 text-center">تاريخ التحصيل</th>
+                                  <th className="p-3 text-center">رقم سند التحصيل</th>
+                                  <th className="p-3 text-center">طريقة السداد</th>
+                                  <th className="p-3 text-center">حالة الشهر</th>
                                   <th className="p-3 text-center">الإجراءات</th>
                                 </tr>
                               </thead>
-                              <tbody className="divide-y divide-slate-800/60 font-bold">
-                                {displayedEntries.length === 0 ? (
+                              <tbody className="divide-y divide-emerald-500/10 font-bold">
+                                {collectedMonths.length === 0 ? (
                                   <tr>
-                                    <td colSpan={10} className="p-8 text-center text-[#9EA7B8]">
-                                      <Clock className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-                                      <p className="text-xs font-bold text-[#F8F9FB]">لا توجد سجلات مطابقة لهذا القسم حالياً.</p>
+                                    <td colSpan={8} className="p-8 text-center text-[#9EA7B8]">
+                                      <Clock className="w-8 h-8 text-emerald-500/30 mx-auto mb-2" />
+                                      <p className="text-xs font-bold text-[#F8F9FB]">لا توجد شهور محصلة مسجلة لهذا المستأجر.</p>
                                     </td>
                                   </tr>
                                 ) : (
-                                  displayedEntries.map((e, idx) => {
-                                    const isCurrentMonth = e.forMonthYear === currentMonthISO;
-                                    const isFutureMonth = !!(e.forMonthYear && e.forMonthYear > currentMonthISO);
-
+                                  collectedMonths.map((d, idx) => {
+                                    const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
                                     return (
-                                      <tr 
-                                        key={e.id} 
-                                        className={`transition-colors ${
-                                          e.statusBadge === 'collected' 
-                                            ? 'hover:bg-emerald-500/[0.04]' 
-                                            : e.statusBadge === 'prepaid'
-                                              ? 'bg-amber-500/[0.02] hover:bg-amber-500/[0.06]'
-                                              : e.statusBadge === 'partial'
-                                                ? 'bg-amber-500/[0.04] hover:bg-amber-500/[0.08]'
-                                                : 'bg-rose-500/[0.02] hover:bg-rose-500/[0.06]'
-                                        }`}
-                                      >
-                                        {/* 1. # */}
+                                      <tr key={d.id} className="hover:bg-[#08111F]/40 transition-colors">
                                         <td className="p-3 text-center font-mono text-[#9EA7B8] text-[11px]">{idx + 1}</td>
-
-                                        {/* 2. الشهر والسنة */}
-                                        <td className="p-3">
-                                          <div className="flex items-center gap-2 flex-wrap">
-                                            <span className="font-mono text-[#F8F9FB] font-extrabold">
-                                              {e.monthNameAr || formatMonthYearAr(e.forMonthYear)}
-                                            </span>
-                                            {isCurrentMonth ? (
-                                              <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 text-[9px] font-bold border border-blue-500/30">
-                                                الشهر الحالي
-                                              </span>
-                                            ) : isFutureMonth ? (
-                                              <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[9px] font-bold border border-amber-400/30">
-                                                قادم
-                                              </span>
-                                            ) : (
-                                              <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[#9EA7B8] text-[9px] font-bold">
-                                                سابق
-                                              </span>
-                                            )}
-                                          </div>
-                                          {e.dueDate && (
-                                            <span className="text-[10px] text-[#9EA7B8] block mt-0.5 font-mono">
-                                              الاستحقاق: {e.dueDate}
-                                            </span>
-                                          )}
+                                        <td className="p-3 font-mono text-[#F8F9FB] font-extrabold">{d.monthNameAr || d.forMonthYear}</td>
+                                        <td className="p-3 text-center font-mono text-emerald-400 font-black">
+                                          {details.totalPaid.toLocaleString('ar-EG')} ج.م
                                         </td>
-
-                                        {/* 3. قيمة الإيجار المستحقة */}
+                                        <td className="p-3 text-center font-mono text-[#F8F9FB] text-[11px]">{details.paymentDate || d.paidDate || '—'}</td>
+                                        <td className="p-3 text-center font-mono text-[#D4A84F] font-bold">{details.receiptNumber || d.receiptNumber || '—'}</td>
+                                        <td className="p-3 text-center font-bold text-[#9EA7B8]">{formatPaymentMethod(details.paymentMethod || d.paymentMethod)}</td>
                                         <td className="p-3 text-center">
-                                          <div className="flex items-center justify-center gap-1.5">
-                                            <span className="font-mono text-[#F8F9FB] font-black text-xs">
-                                              {e.rentDue.toLocaleString('ar-EG')} ج.م
-                                            </span>
-                                            <button
-                                              type="button"
-                                              onClick={() => handleOpenEditRentModal(e)}
-                                              className="p-1 rounded-md text-[#9EA7B8] hover:text-[#D4A84F] hover:bg-[#D4A84F]/10 transition-colors cursor-pointer"
-                                              title="تعديل القيمة الإيجارية لهذا الشهر"
-                                            >
-                                              <Edit2 className="w-3.5 h-3.5" />
-                                            </button>
-                                          </div>
-                                          {e.isAdjusted && (
-                                            <span className="text-[9px] text-[#D4A84F] block font-bold">
-                                              (معدل)
-                                            </span>
-                                          )}
-                                        </td>
-
-                                        {/* 4. حالة السداد أو عدم السداد */}
-                                        <td className="p-3 text-center">
-                                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black border ${e.statusColorClass}`}>
-                                            {e.statusBadge === 'collected' && <CheckCircle className="w-3.5 h-3.5" />}
-                                            {e.statusBadge === 'prepaid' && <Sparkles className="w-3.5 h-3.5 text-amber-300" />}
-                                            {e.statusBadge === 'partial' && <AlertCircle className="w-3.5 h-3.5 text-amber-400" />}
-                                            {e.statusBadge === 'overdue' && (e.isReverted ? <RefreshCw className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />)}
-                                            {e.statusBadge === 'pending' && <Clock className="w-3.5 h-3.5" />}
-                                            <span>{e.statusText}</span>
-                                          </span>
-                                          {e.statusBadge === 'overdue' && e.delayDays > 0 && !e.isReverted && (
-                                            <span className="block text-[9.5px] text-rose-300 font-mono mt-0.5">
-                                              تأخير {e.delayDays} يوماً
-                                            </span>
-                                          )}
-                                        </td>
-
-                                        {/* 5. المبالغ المسددة */}
-                                        <td className="p-3 text-center font-mono font-bold">
-                                          {e.receiptsTotalPaid > 0 ? (
-                                            <span className="text-emerald-400 font-black">
-                                              {e.receiptsTotalPaid.toLocaleString('ar-EG')} ج.م
-                                            </span>
-                                          ) : (
-                                            <span className="text-[#9EA7B8]">0 ج.م</span>
-                                          )}
-                                        </td>
-
-                                        {/* 6. الدفع المسبق وترحيله بشكل صحيح */}
-                                        <td className="p-3 text-center font-mono text-[11px]">
-                                          {e.statusBadge === 'prepaid' ? (
-                                            <div className="bg-amber-500/10 px-2 py-1 rounded-lg border border-amber-400/25">
-                                              <span className="text-amber-300 font-bold block">
-                                                سداد مسبق
-                                              </span>
-                                              <span className="text-amber-200 text-[10px]">
-                                                {e.receiptsTotalPaid.toLocaleString('ar-EG')} ج.م
-                                              </span>
-                                            </div>
-                                          ) : e.appliedRolledOverCredit > 0 ? (
-                                            <div className="bg-blue-500/10 px-2 py-1 rounded-lg border border-blue-400/25">
-                                              <span className="text-blue-300 font-bold block">
-                                                مرحّل من سداد سابق
-                                              </span>
-                                              <span className="text-blue-200 text-[10px]">
-                                                +{e.appliedRolledOverCredit.toLocaleString('ar-EG')} ج.م
-                                              </span>
-                                            </div>
-                                          ) : e.surplusGeneratedThisMonth > 0 ? (
-                                            <div className="bg-emerald-500/10 px-2 py-1 rounded-lg border border-emerald-400/25">
-                                              <span className="text-emerald-300 font-bold block">
-                                                فائض مرحّل للأمام
-                                              </span>
-                                              <span className="text-emerald-200 text-[10px]">
-                                                +{e.surplusGeneratedThisMonth.toLocaleString('ar-EG')} ج.م
-                                              </span>
-                                            </div>
-                                          ) : (
-                                            <span className="text-[#9EA7B8] font-sans">—</span>
-                                          )}
-                                        </td>
-
-                                        {/* 7. المبلغ المتبقي */}
-                                        <td className="p-3 text-center font-mono">
-                                          {e.remainingForMonth > 0 ? (
-                                            <span className="text-rose-400 font-black">
-                                              {e.remainingForMonth.toLocaleString('ar-EG')} ج.م
-                                            </span>
-                                          ) : (
-                                            <span className="text-emerald-400 font-bold">
-                                              0 ج.م
-                                            </span>
-                                          )}
-                                        </td>
-
-                                        {/* 8. الرصيد التراكمي */}
-                                        <td className="p-3 text-center font-mono font-black">
-                                          <span className={e.cumulativeRunningBalance > 0 ? 'text-rose-400' : 'text-emerald-400'}>
-                                            {e.cumulativeRunningBalance.toLocaleString('ar-EG')} ج.م
+                                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                            <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                                            <span>تم التحصيل</span>
                                           </span>
                                         </td>
-
-                                        {/* 9. سند التحصيل والتاريخ */}
-                                        <td className="p-3 text-center font-mono text-[11px]">
-                                          {e.receiptDetails.receiptNumber ? (
-                                            <div>
-                                              <span className="text-[#D4A84F] font-black block">
-                                                سند #{e.receiptDetails.receiptNumber}
-                                              </span>
-                                              <span className="text-[10px] text-[#9EA7B8] block">
-                                                {e.receiptDetails.paymentDate || '—'}
-                                              </span>
-                                              <span className="text-[9.5px] text-slate-400 block font-sans">
-                                                {formatPaymentMethod(e.receiptDetails.paymentMethod)}
-                                              </span>
-                                            </div>
-                                          ) : e.isReverted ? (
-                                            <span className="text-amber-400 text-[10px] font-sans">
-                                              تم الرجوع عن السند
-                                            </span>
-                                          ) : (
-                                            <span className="text-[#9EA7B8] font-sans">—</span>
-                                          )}
-                                        </td>
-
-                                        {/* 10. الإجراءات */}
                                         <td className="p-3 text-center">
-                                          <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                                            {e.remainingForMonth > 0 ? (
-                                              <>
-                                                <button
-                                                  type="button"
-                                                  onClick={() => onCollectRent(e)}
-                                                  className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black transition-all cursor-pointer inline-flex items-center gap-1 shadow-sm"
-                                                  title="تسجيل سند تحصيل لهذا الشهر"
-                                                >
-                                                  <DollarSign className="w-3.5 h-3.5" />
-                                                  <span>تحصيل</span>
-                                                </button>
-                                                <button
-                                                  type="button"
-                                                  onClick={() => handleOpenEditRentModal(e)}
-                                                  className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[#9EA7B8] hover:text-[#D4A84F] text-[11px] font-bold transition-all cursor-pointer inline-flex items-center gap-1 border border-slate-700"
-                                                  title="تعديل القيمة الإيجارية لهذا الشهر"
-                                                >
-                                                  <Edit2 className="w-3 h-3" />
-                                                  <span>تعديل</span>
-                                                </button>
-                                              </>
-                                            ) : e.statusBadge === 'prepaid' ? (
-                                              <>
-                                                <button
-                                                  type="button"
-                                                  onClick={() => handleOpenRevertPrepaymentModal(currentTenantObj, currentUnitObj, currentPropObj, currentOwnerObj, e.id)}
-                                                  className="px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-[11px] font-black transition-all cursor-pointer inline-flex items-center gap-1 shadow-sm"
-                                                  title="الرجوع عن الدفع المسبق لهذا الشهر"
-                                                >
-                                                  <RefreshCw className="w-3 h-3" />
-                                                  <span>رجوع</span>
-                                                </button>
-                                                <button
-                                                  type="button"
-                                                  onClick={() => setTenantReceiptsModalTenant(currentTenantObj)}
-                                                  className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[#D4A84F] text-[11px] font-bold transition-all cursor-pointer inline-flex items-center gap-1 border border-slate-700"
-                                                  title="عرض سندات التحصيل الصادرة"
-                                                >
-                                                  <FileText className="w-3 h-3" />
-                                                  <span>السند</span>
-                                                </button>
-                                                <button
-                                                  type="button"
-                                                  onClick={() => handleOpenEditRentModal(e)}
-                                                  className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[#9EA7B8] hover:text-[#D4A84F] text-[11px] font-bold transition-all cursor-pointer inline-flex items-center gap-1 border border-slate-700"
-                                                  title="تعديل القيمة الإيجارية لهذا الشهر"
-                                                >
-                                                  <Edit2 className="w-3 h-3" />
-                                                  <span>تعديل</span>
-                                                </button>
-                                              </>
-                                            ) : (
-                                              <>
-                                                <button
-                                                  type="button"
-                                                  onClick={() => handleOpenRevertModal(currentTenantObj, currentUnitObj, currentPropObj, currentOwnerObj, e.id)}
-                                                  className="px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-[11px] font-black transition-all cursor-pointer inline-flex items-center gap-1 shadow-sm"
-                                                  title="الرجوع عن تحصيل هذا الشهر"
-                                                >
-                                                  <RefreshCw className="w-3 h-3" />
-                                                  <span>رجوع</span>
-                                                </button>
-                                                <button
-                                                  type="button"
-                                                  onClick={() => setTenantReceiptsModalTenant(currentTenantObj)}
-                                                  className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[#D4A84F] text-[11px] font-bold transition-all cursor-pointer inline-flex items-center gap-1 border border-slate-700"
-                                                  title="عرض سندات التحصيل الصادرة"
-                                                >
-                                                  <FileText className="w-3 h-3" />
-                                                  <span>السند</span>
-                                                </button>
-                                                <button
-                                                  type="button"
-                                                  onClick={() => handleOpenEditRentModal(e)}
-                                                  className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[#9EA7B8] hover:text-[#D4A84F] text-[11px] font-bold transition-all cursor-pointer inline-flex items-center gap-1 border border-slate-700"
-                                                  title="تعديل القيمة الإيجارية لهذا الشهر"
-                                                >
-                                                  <Edit2 className="w-3 h-3" />
-                                                  <span>تعديل</span>
-                                                </button>
-                                              </>
-                                            )}
-                                          </div>
+                                          <button
+                                            onClick={() => handleOpenRevertModal(currentTenantObj, currentUnitObj, currentPropObj, currentOwnerObj, d.id)}
+                                            className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-[11px] font-black transition-all cursor-pointer inline-flex items-center gap-1"
+                                            title="الرجوع عن تحصيل هذا الشهر وإعادته للمتأخرات"
+                                          >
+                                            <RefreshCw className="w-3.5 h-3.5" />
+                                            <span>الرجوع عن التحصيل</span>
+                                          </button>
                                         </td>
                                       </tr>
                                     );
@@ -8474,6 +8047,205 @@ export default function RealEstateFinancials({
                                 )}
                               </tbody>
                             </table>
+                          </div>
+                        </div>
+
+                        {/* ------------------------------------------------------------- */}
+                        {/* SECTION 2: الشهور المتأخرة */}
+                        {/* ------------------------------------------------------------- */}
+                        <div className="bg-[#132238]/80 backdrop-blur-md rounded-2xl border border-rose-500/30 p-5 space-y-4 shadow-xl">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-rose-500/20 pb-3">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400">
+                                <AlertTriangle className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <h3 className="text-sm font-black text-[#F8F9FB]">2. الشهور المتأخرة</h3>
+                                <p className="text-[10px] text-[#9EA7B8] font-bold">جميع الشهور غير المسددة حتى تاريخ الشهر المالي الحالي ({currentMonthISO})</p>
+                              </div>
+                            </div>
+                            <span className={`px-3 py-1 rounded-full text-xs font-black ${overdueMonths.length > 0 ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30' : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'}`}>
+                              {overdueMonths.length > 0 ? `${overdueMonths.length} شهر متأخر` : 'لا توجد متأخرات 🎉'}
+                            </span>
+                          </div>
+
+                          <div className="overflow-x-auto rounded-xl border border-rose-500/15">
+                            <table className="w-full text-right text-xs">
+                              <thead>
+                                <tr className="bg-[#08111F]/90 text-[#9EA7B8] font-bold border-b border-rose-500/20 text-[11px]">
+                                  <th className="p-3 text-center w-10">#</th>
+                                  <th className="p-3">الشهر والسنة</th>
+                                  <th className="p-3 text-center">قيمة الإيجار</th>
+                                  <th className="p-3 text-center">المسدد بسند التحصيل</th>
+                                  <th className="p-3 text-center">المتبقي المستحق</th>
+                                  <th className="p-3 text-center">تاريخ الاستحقاق</th>
+                                  <th className="p-3 text-center">عدد أيام التأخير</th>
+                                  <th className="p-3 text-center">حالة الشهر</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-rose-500/10 font-bold">
+                                {overdueMonths.length === 0 ? (
+                                  <tr>
+                                    <td colSpan={8} className="p-8 text-center text-[#9EA7B8]">
+                                      <CheckCircle className="w-8 h-8 text-emerald-400/40 mx-auto mb-2" />
+                                      <p className="text-xs font-bold text-emerald-400">🎉 لا توجد شهور متأخرة! المستأجر منتظم تماماً بالسداد.</p>
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  overdueMonths.map((d, idx) => {
+                                    const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
+                                    const delayDays = calculateDelayDays(d);
+                                    const revertedColl = collections.find(c => 
+                                      (c.status === 'reverted' || c.isCancelled) &&
+                                      c.tenantId === d.tenantId &&
+                                      (c.forMonthYear === d.forMonthYear || (c.paymentDate && c.paymentDate.slice(0, 7) === d.forMonthYear))
+                                    );
+                                    const isReverted = !!revertedColl || !!d.lastRevertDate || (d.collectionNotes && d.collectionNotes.includes('رجوع'));
+
+                                    return (
+                                      <tr key={d.id} className={`${isReverted ? 'bg-amber-500/[0.06]' : details.isPartial ? 'bg-amber-500/[0.04]' : 'bg-rose-500/[0.03]'} hover:bg-rose-500/[0.07] transition-colors`}>
+                                        <td className="p-3 text-center font-mono text-[#9EA7B8] text-[11px]">{idx + 1}</td>
+                                        <td className="p-3 font-mono text-[#F8F9FB] font-extrabold">{d.monthNameAr || d.forMonthYear}</td>
+                                        <td className="p-3 text-center font-mono text-[#F8F9FB] font-black">
+                                          {(d.rentAmount || 0).toLocaleString('ar-EG')} ج.م
+                                        </td>
+                                        <td className="p-3 text-center font-mono text-emerald-400 font-bold">
+                                          {details.totalPaid > 0 ? (
+                                            <div>
+                                              <span>{details.totalPaid.toLocaleString('ar-EG')} ج.م</span>
+                                              {details.receiptNumber && (
+                                                <span className="block text-[9px] text-[#D4A84F] font-mono">سند #{details.receiptNumber}</span>
+                                              )}
+                                            </div>
+                                          ) : (
+                                            <span className="text-[#9EA7B8]">0 ج.م</span>
+                                          )}
+                                        </td>
+                                        <td className="p-3 text-center font-mono text-rose-400 font-black">
+                                          {details.remainingAmount.toLocaleString('ar-EG')} ج.م
+                                        </td>
+                                        <td className="p-3 text-center font-mono text-[#F8F9FB] text-[11px]">{d.dueDate || '—'}</td>
+                                        <td className="p-3 text-center font-mono text-rose-300 font-black">
+                                          {delayDays > 0 ? `${delayDays} يوماً` : 'مستحق اليوم'}
+                                        </td>
+                                        <td className="p-3 text-center">
+                                          {isReverted ? (
+                                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40" title={`تم الرجوع عن التحصيل بتاريخ: ${revertedColl?.updatedAt?.slice(0, 10) || d.lastRevertDate || '—'}`}>
+                                              <RefreshCw className="w-3.5 h-3.5 text-amber-400" />
+                                              <span>⚠️ مرجوع عن التحصيل</span>
+                                            </span>
+                                          ) : details.isPartial ? (
+                                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                              <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+                                              <span>مسدد جزئيًا (متبقي {details.remainingAmount.toLocaleString('ar-EG')} ج.م)</span>
+                                            </span>
+                                          ) : (
+                                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                                              <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                                              <span>متأخر</span>
+                                            </span>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        {/* ------------------------------------------------------------- */}
+                        {/* SECTION 3: الشهور المسددة مسبقًا (الدفع المسبق) */}
+                        {/* ------------------------------------------------------------- */}
+                        <div className="bg-[#132238]/80 backdrop-blur-md rounded-2xl border border-amber-500/30 p-5 space-y-4 shadow-xl">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-500/20 pb-3">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                                <Sparkles className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <h3 className="text-sm font-black text-[#F8F9FB]">3. الشهور المسددة مسبقًا (الدفع المسبق / السداد الاحتياطي)</h3>
+                                <p className="text-[10px] text-[#9EA7B8] font-bold">جميع الأشهر الموجودة بقائمة السداد الاحتياطي للفترات القادمة ({`>`} {currentMonthISO}) والتي تم تحصيلها</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {prepaidMonths.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenRevertPrepaymentModal(currentTenantObj, currentUnitObj, currentPropObj, currentOwnerObj)}
+                                  className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/35 text-amber-200 border border-amber-400/50 text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+                                  title="الرجوع عن تحصيل الأشهر المسددة مسبقاً"
+                                >
+                                  <RefreshCw className="w-3.5 h-3.5 text-amber-300" />
+                                  <span>الرجوع عن التحصيل</span>
+                                </button>
+                              )}
+                              <span className="px-3 py-1 rounded-full text-xs font-black bg-amber-500/20 text-amber-300 border border-amber-400/40">
+                                {prepaidMonths.length} شهر مدفوع مسبقًا
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="overflow-x-auto rounded-xl border border-amber-500/15">
+                            <table className="w-full text-right text-xs">
+                              <thead>
+                                <tr className="bg-[#08111F]/90 text-[#9EA7B8] font-bold border-b border-amber-500/20 text-[11px]">
+                                  <th className="p-3 text-center w-10">#</th>
+                                  <th className="p-3">الشهر والسنة</th>
+                                  <th className="p-3 text-center">قيمة الإيجار</th>
+                                  <th className="p-3 text-center">تاريخ إضافة السداد المسبق</th>
+                                  <th className="p-3 text-center">حالة الشهر</th>
+                                  <th className="p-3 text-center">الإجراءات</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-amber-500/10 font-bold">
+                                {prepaidMonths.length === 0 ? (
+                                  <tr>
+                                    <td colSpan={6} className="p-8 text-center text-[#9EA7B8]">
+                                      <Clock className="w-8 h-8 text-amber-500/30 mx-auto mb-2" />
+                                      <p className="text-xs font-bold text-[#F8F9FB]">لا توجد شهور مسددة مسبقاً لهذا المستأجر.</p>
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  prepaidMonths.map((d, idx) => {
+                                    const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
+                                    return (
+                                      <tr key={d.id} className="bg-amber-500/[0.04] hover:bg-amber-500/[0.08] transition-colors">
+                                        <td className="p-3 text-center font-mono text-[#9EA7B8] text-[11px]">{idx + 1}</td>
+                                        <td className="p-3 font-mono text-[#F8F9FB] font-extrabold flex items-center gap-2">
+                                          <span>{d.monthNameAr || d.forMonthYear}</span>
+                                          <span className="text-[9px] font-sans px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/40 font-black">
+                                            احتياطي مدفوع
+                                          </span>
+                                        </td>
+                                        <td className="p-3 text-center font-mono text-amber-300 font-black">
+                                          {details.totalPaid.toLocaleString('ar-EG')} ج.م
+                                        </td>
+                                        <td className="p-3 text-center font-mono text-[#F8F9FB] text-[11px]">{details.paymentDate || d.paidDate || '—'}</td>
+                                        <td className="p-3 text-center">
+                                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-400/40">
+                                            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                                            <span>مدفوع مسبقًا</span>
+                                          </span>
+                                        </td>
+                                      <td className="p-3 text-center">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleOpenRevertPrepaymentModal(currentTenantObj, currentUnitObj, currentPropObj, currentOwnerObj, d.id)}
+                                          className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-[11px] font-black transition-all cursor-pointer inline-flex items-center gap-1 shadow-sm"
+                                          title="الرجوع عن الدفع المسبق لهذا الشهر"
+                                        >
+                                          <RefreshCw className="w-3.5 h-3.5 text-amber-300" />
+                                          <span>الرجوع عن التحصيل</span>
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  );
+                                })
+                              )}
+                            </tbody>
+                          </table>
                           </div>
                         </div>
                       </div>
