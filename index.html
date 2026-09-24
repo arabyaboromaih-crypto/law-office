@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <script>
+      (function() {
+        // 1. Mock Vite HMR WebSocket so that Vite client never tries to make failing network connections
+        var OriginalWebSocket = window.WebSocket;
+        if (OriginalWebSocket) {
+          window.WebSocket = function(url, protocols) {
+            var isVite = false;
+            if (typeof protocols === 'string' && (protocols === 'vite-hmr' || protocols === 'vite-ping')) {
+              isVite = true;
+            } else if (Array.isArray(protocols) && (protocols.indexOf('vite-hmr') !== -1 || protocols.indexOf('vite-ping') !== -1)) {
+              isVite = true;
+            } else if (typeof url === 'string' && (url.indexOf('token=') !== -1 || url.indexOf('vite-hmr') !== -1 || url.indexOf('vite') !== -1)) {
+              isVite = true;
+            }
+
+            if (isVite) {
+              var listeners = {};
+              var dummy = {
+                CONNECTING: 0,
+                OPEN: 1,
+                CLOSING: 2,
+                CLOSED: 3,
+                readyState: 1, // OPEN
+                url: url,
+                protocol: typeof protocols === 'string' ? protocols : (protocols && protocols[0]) || '',
+                extensions: '',
+                binaryType: 'blob',
+                bufferedAmount: 0,
+                send: function() {},
+                close: function() {
+                  dummy.readyState = 3;
+                },
+                addEventListener: function(type, listener, options) {
+                  if (!listeners[type]) listeners[type] = [];
+                  listeners[type].push({ fn: listener, once: options && options.once });
+                  if (type === 'open') {
+                    setTimeout(function() {
+                      if (typeof dummy.onopen === 'function') dummy.onopen(new Event('open'));
+                      if (listener) listener(new Event('open'));
+                    }, 0);
+                  }
+                },
+                removeEventListener: function(type, listener) {
+                  if (!listeners[type]) return;
+                  listeners[type] = listeners[type].filter(function(l) { return l.fn !== listener; });
+                },
+                dispatchEvent: function(event) {
+                  var list = listeners[event.type] || [];
+                  for (var i = 0; i < list.length; i++) {
+                    list[i].fn(event);
+                  }
+                  return true;
+                }
+              };
+              return dummy;
+            }
+            return new OriginalWebSocket(url, protocols);
+          };
+          window.WebSocket.prototype = OriginalWebSocket.prototype;
+          window.WebSocket.CONNECTING = 0;
+          window.WebSocket.OPEN = 1;
+          window.WebSocket.CLOSING = 2;
+          window.WebSocket.CLOSED = 3;
+        }
+
+        // 2. Filter out any benign Vite development console output
+        function shouldSuppress(args) {
+          for (var i = 0; i < args.length; i++) {
+            var item = args[i];
+            if (!item) continue;
+            var str = typeof item === 'string' ? item : (item.message || item.stack || '');
+            if (typeof str === 'string' && (str.indexOf('[vite]') !== -1 || str.indexOf('failed to connect to websocket') !== -1 || str.indexOf('connecting...') !== -1)) {
+              return true;
+            }
+          }
+          return false;
+        }
+
+        var methods = ['error', 'warn', 'info', 'debug', 'log'];
+        for (var m = 0; m < methods.length; m++) {
+          var method = methods[m];
+          var orig = console[method];
+          (function(mName, originalFn) {
+            console[mName] = function() {
+              if (shouldSuppress(arguments)) return;
+              if (originalFn) originalFn.apply(console, arguments);
+            };
+          })(method, orig);
+        }
+
+        window.addEventListener('error', function(e) {
+          var msg = (e && (e.message || (e.error && e.error.message))) || '';
+          if (typeof msg === 'string' && (msg.indexOf('[vite]') !== -1 || msg.indexOf('websocket') !== -1)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+          }
+        }, true);
+
+        window.addEventListener('unhandledrejection', function(e) {
+          var reason = (e && e.reason) || '';
+          var msg = typeof reason === 'string' ? reason : (reason && reason.message) || '';
+          if (typeof msg === 'string' && (msg.indexOf('[vite]') !== -1 || msg.indexOf('websocket') !== -1)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+          }
+        }, true);
+      })();
+    </script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="google" content="notranslate" />
+    <title>مؤسسة رميح للمحاماة والاستشارات القانونية</title>
+    <meta name="description" content="نظام متكامل لإدارة القضايا والموكلين والشركات وأجندة الجلسات والماليات والأرشيف وسجل العمليات متوافق بالكامل مع سير العمل في المحاكم المصرية." />
+    <meta property="og:title" content="مؤسسة رميح للمحاماة والاستشارات القانونية" />
+    <meta property="og:description" content="نظام متكامل لإدارة القضايا والموكلين والشركات وأجندة الجلسات والماليات والأرشيف وسجل العمليات متوافق بالكامل مع سير العمل في المحاكم المصرية." />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" type="image/png" href="/icon-192.png" />
+    <meta name="theme-color" content="#1e293b" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
