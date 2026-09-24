@@ -22,7 +22,6 @@ import {
 } from 'lucide-react';
 import { Case, CaseFile, User as AppUser } from '../types';
 import { uploadToR2, saveFileToIndexedDB, getFileFromIndexedDB, getProxiedUrl, downloadFile } from '../utils/fileStorage';
-import DocumentViewerModal from './DocumentViewerModal';
 
 export const DOCUMENT_TYPE_OPTIONS = [
   'صحيفة الدعوى',
@@ -86,9 +85,6 @@ export default function CaseDocumentsModal({
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [feedbackMessage, setFeedbackMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
-  
-  // In-app Document Viewer Popup State
-  const [viewingFile, setViewingFile] = useState<CaseFile | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -281,9 +277,37 @@ export default function CaseDocumentsModal({
     }
   };
 
-  // View document directly via in-app viewer modal
+  // Open document directly via current proxy without any intermediate modal
   const handleViewDocument = (file: CaseFile) => {
-    setViewingFile(file);
+    if (!file) return;
+    const rawUrl = file.downloadURL || file.fileUrl;
+    if (rawUrl && (rawUrl.startsWith('http://') || rawUrl.startsWith('https://'))) {
+      const proxyUrl = getProxiedUrl(rawUrl);
+      window.open(proxyUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (rawUrl && (rawUrl.startsWith('blob:') || rawUrl.startsWith('data:'))) {
+      window.open(rawUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (file.id) {
+      getFileFromIndexedDB(file.id).then(blob => {
+        if (blob) {
+          const blobUrl = URL.createObjectURL(blob);
+          window.open(blobUrl, '_blank', 'noopener,noreferrer');
+        } else if (rawUrl) {
+          window.open(getProxiedUrl(rawUrl), '_blank', 'noopener,noreferrer');
+        }
+      }).catch(() => {
+        if (rawUrl) {
+          window.open(getProxiedUrl(rawUrl), '_blank', 'noopener,noreferrer');
+        }
+      });
+      return;
+    }
+    if (rawUrl) {
+      window.open(getProxiedUrl(rawUrl), '_blank', 'noopener,noreferrer');
+    }
   };
 
   // Download file safely to user device with exact original filename
@@ -689,10 +713,17 @@ export default function CaseDocumentsModal({
                 {filteredFiles.map((file) => {
                   if (!file) return null;
                   const fileName = file.name || 'مستند';
+                  const fileRawUrl = file.downloadURL || file.fileUrl;
+                  const directProxyUrl = fileRawUrl && (fileRawUrl.startsWith('http://') || fileRawUrl.startsWith('https://')) 
+                    ? getProxiedUrl(fileRawUrl) 
+                    : (fileRawUrl && (fileRawUrl.startsWith('blob:') || fileRawUrl.startsWith('data:')) ? fileRawUrl : '');
+
                   return (
                   <div
                     key={file.id || fileName}
-                    className="bg-white border border-slate-200 hover:border-amber-300 rounded-2xl p-4 shadow-3xs hover:shadow-xs transition-all flex flex-col justify-between text-right relative group"
+                    onClick={() => handleViewDocument(file)}
+                    className="bg-white border border-slate-200 hover:border-amber-400 hover:shadow-md rounded-2xl p-4 shadow-3xs transition-all flex flex-col justify-between text-right relative group cursor-pointer"
+                    title="اضغط لفتح المستند مباشرة عبر البروكسي"
                   >
                     <div>
                       {/* Top row: Name + Badge */}
@@ -700,9 +731,22 @@ export default function CaseDocumentsModal({
                         <div className="flex items-center gap-2 min-w-0 flex-1">
                           {getFileIcon(file.type, fileName)}
                           <div className="min-w-0 flex-1">
-                            <h4 className="text-xs font-black text-slate-900 truncate" title={fileName}>
-                              {fileName}
-                            </h4>
+                            {directProxyUrl ? (
+                              <a
+                                href={directProxyUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-xs font-black text-slate-900 hover:text-amber-600 truncate block transition-colors"
+                                title={fileName}
+                              >
+                                {fileName}
+                              </a>
+                            ) : (
+                              <h4 className="text-xs font-black text-slate-900 hover:text-amber-600 truncate transition-colors" title={fileName}>
+                                {fileName}
+                              </h4>
+                            )}
                             <span className="text-[10px] text-slate-400 font-mono">
                               {file.size || 'غير محدد'}
                             </span>
@@ -733,70 +777,57 @@ export default function CaseDocumentsModal({
 
                     {/* Actions row */}
                     <div className="flex items-center justify-between gap-2 mt-4 pt-2.5 border-t border-slate-100">
-                      {(() => {
-                        const fileRawUrl = file.downloadURL || file.fileUrl;
-                        const directProxyUrl = fileRawUrl && (fileRawUrl.startsWith('http://') || fileRawUrl.startsWith('https://')) 
-                          ? getProxiedUrl(fileRawUrl) 
-                          : '';
+                      <div className="flex items-center gap-1.5">
+                        {directProxyUrl ? (
+                          <a
+                            href={directProxyUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-amber-400 hover:text-amber-300 text-xs font-black rounded-lg transition-all flex items-center gap-1 cursor-pointer active:scale-95 shadow-xs"
+                            title="فتح المستند مباشرة عبر البروكسي دون وسيط"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-amber-400" />
+                            <span>عرض / فتح</span>
+                          </a>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleViewDocument(file);
+                            }}
+                            className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-amber-400 hover:text-amber-300 text-xs font-black rounded-lg transition-all flex items-center gap-1 cursor-pointer active:scale-95 shadow-xs"
+                            title="فتح المستند مباشرة عبر البروكسي دون وسيط"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-amber-400" />
+                            <span>عرض / فتح</span>
+                          </button>
+                        )}
 
-                        return (
-                          <div className="flex items-center gap-1.5">
-                            {directProxyUrl ? (
-                              <a
-                                href={directProxyUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-amber-400 hover:text-amber-300 text-xs font-black rounded-lg transition-all flex items-center gap-1 cursor-pointer active:scale-95 shadow-xs"
-                                title="الدخول على البروكسي المباشر للمستند فوراً"
-                              >
-                                <Eye className="w-3.5 h-3.5 text-amber-400" />
-                                <span>عرض / فتح</span>
-                              </a>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => handleViewDocument(file)}
-                                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-amber-400 hover:text-amber-300 text-xs font-black rounded-lg transition-all flex items-center gap-1 cursor-pointer active:scale-95 shadow-xs"
-                                title="عرض المستند"
-                              >
-                                <Eye className="w-3.5 h-3.5 text-amber-400" />
-                                <span>عرض / فتح</span>
-                              </button>
-                            )}
-
-                            {directProxyUrl ? (
-                              <a
-                                href={directProxyUrl}
-                                download={file.name || 'document'}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer active:scale-95"
-                                title="تحميل الملف للجهاز"
-                              >
-                                <Download className="w-3.5 h-3.5" />
-                                <span>تحميل</span>
-                              </a>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => handleDownloadDocument(file)}
-                                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer active:scale-95"
-                                title="تحميل الملف للجهاز"
-                              >
-                                <Download className="w-3.5 h-3.5" />
-                                <span>تحميل</span>
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })()}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDownloadDocument(file);
+                          }}
+                          className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer active:scale-95"
+                          title="تحميل الملف للجهاز"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>تحميل</span>
+                        </button>
+                      </div>
 
                       {/* Delete button or confirmation */}
                       {deleteConfirmId === file.id ? (
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
-                            onClick={() => handleConfirmDelete(file.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleConfirmDelete(file.id);
+                            }}
                             disabled={isDeleting}
                             className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-black rounded-lg transition-all cursor-pointer"
                           >
@@ -804,7 +835,10 @@ export default function CaseDocumentsModal({
                           </button>
                           <button
                             type="button"
-                            onClick={() => setDeleteConfirmId(null)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteConfirmId(null);
+                            }}
                             disabled={isDeleting}
                             className="px-2 py-1 bg-slate-200 text-slate-700 text-[11px] font-bold rounded-lg transition-all cursor-pointer"
                           >
@@ -814,7 +848,10 @@ export default function CaseDocumentsModal({
                       ) : (
                         <button
                           type="button"
-                          onClick={() => setDeleteConfirmId(file.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteConfirmId(file.id);
+                          }}
                           className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                           title="حذف هذا المستند"
                         >
@@ -848,15 +885,6 @@ export default function CaseDocumentsModal({
           </button>
         </div>
       </div>
-
-      {/* Integrated In-App Document Viewer Popup */}
-      {viewingFile && (
-        <DocumentViewerModal
-          file={viewingFile}
-          caseData={caseData}
-          onClose={() => setViewingFile(null)}
-        />
-      )}
     </div>
   );
 }

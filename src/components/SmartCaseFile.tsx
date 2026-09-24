@@ -20,7 +20,6 @@ import { AddHearingModal } from './AddHearingModal';
 import ComprehensiveCaseReportModal from './ComprehensiveCaseReportModal';
 import { DetentionRenewalsModal } from './DetentionRenewalsModal';
 import CaseDocumentsModal from './CaseDocumentsModal';
-import DocumentViewerModal from './DocumentViewerModal';
 import { isExpertSession, isDetentionSession } from './SessionCard';
 import { getEffectiveStageInfo, computeCaseDegree } from '../utils/stageUtils';
 import { deduplicateSessions, normalizeCaseNumber } from '../utils/hearingSync';
@@ -3179,12 +3178,39 @@ function DocumentsTab({
   onOpenAttachModal?: () => void;
 }) {
 
-  const [viewingFile, setViewingFile] = useState<CaseFile | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
-  // Direct access to in-app document viewer
-  const handleViewFile = (file: CaseFile) => {
-    setViewingFile(file);
+  // Direct access to open file via current Proxy without intermediate modal or download
+  const handleOpenFile = (file: CaseFile) => {
+    if (!file) return;
+    const rawUrl = file.downloadURL || file.fileUrl;
+    if (rawUrl && (rawUrl.startsWith('http://') || rawUrl.startsWith('https://'))) {
+      const proxyUrl = getProxiedUrl(rawUrl);
+      window.open(proxyUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (rawUrl && (rawUrl.startsWith('blob:') || rawUrl.startsWith('data:'))) {
+      window.open(rawUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (file.id) {
+      getFileFromIndexedDB(file.id).then(blob => {
+        if (blob) {
+          const blobUrl = URL.createObjectURL(blob);
+          window.open(blobUrl, '_blank', 'noopener,noreferrer');
+        } else if (rawUrl) {
+          window.open(getProxiedUrl(rawUrl), '_blank', 'noopener,noreferrer');
+        }
+      }).catch(() => {
+        if (rawUrl) {
+          window.open(getProxiedUrl(rawUrl), '_blank', 'noopener,noreferrer');
+        }
+      });
+      return;
+    }
+    if (rawUrl) {
+      window.open(getProxiedUrl(rawUrl), '_blank', 'noopener,noreferrer');
+    }
   };
 
   // Safe native file download with verified filename
@@ -3253,11 +3279,18 @@ function DocumentsTab({
                 isWord ? { label: 'WORD', bg: 'bg-blue-50 text-blue-700 border-blue-200/60', color: 'bg-blue-500' } :
                 { label: 'IMAGE', bg: 'bg-emerald-50 text-emerald-700 border-emerald-200/60', color: 'bg-emerald-500' };
 
+              const rawUrl = file.downloadURL || file.fileUrl;
+              const directProxyUrl = rawUrl && (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) 
+                ? getProxiedUrl(rawUrl) 
+                : (rawUrl && (rawUrl.startsWith('blob:') || rawUrl.startsWith('data:')) ? rawUrl : '');
+
               return (
                 <div 
                   key={file.id || fileName} 
-                  className="bg-white border border-slate-200 hover:border-amber-400/50 rounded-2xl p-4 shadow-xs hover:shadow-sm transition-all duration-200 flex flex-col justify-between relative overflow-hidden group text-right"
+                  onClick={() => handleOpenFile(file)}
+                  className="bg-white border border-slate-200 hover:border-amber-400 hover:shadow-md rounded-2xl p-4 shadow-xs transition-all duration-200 flex flex-col justify-between relative overflow-hidden group text-right cursor-pointer"
                   dir="rtl"
+                  title="اضغط لفتح المستند مباشرة عبر البروكسي"
                 >
                   {/* Left status accent strip matching file type */}
                   <div className={`absolute top-0 bottom-0 right-0 w-1 ${formatConfig.color}`} />
@@ -3266,9 +3299,22 @@ function DocumentsTab({
                     {/* Header: name + format badge */}
                     <div className="flex items-start justify-between gap-2">
                       <div className="truncate flex-1">
-                        <h6 className="text-[11px] font-black text-slate-950 truncate" title={fileName}>
-                          📄 {fileName}
-                        </h6>
+                        {directProxyUrl ? (
+                          <a
+                            href={directProxyUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-[11px] font-black text-slate-950 hover:text-amber-600 truncate block transition-colors"
+                            title={fileName}
+                          >
+                            📄 {fileName}
+                          </a>
+                        ) : (
+                          <h6 className="text-[11px] font-black text-slate-950 hover:text-amber-600 truncate transition-colors" title={fileName}>
+                            📄 {fileName}
+                          </h6>
+                        )}
                       </div>
                       <span className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded border leading-none ${formatConfig.bg}`}>
                         {formatConfig.label}
@@ -3306,18 +3352,38 @@ function DocumentsTab({
 
                   {/* Card Actions */}
                   <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-2.5 mt-3 pr-2">
+                    {directProxyUrl ? (
+                      <a
+                        href={directProxyUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="px-3 py-1.5 bg-slate-950 hover:bg-slate-900 text-amber-400 hover:text-amber-300 text-[10px] font-extrabold rounded-lg transition-all flex items-center gap-1 cursor-pointer active:scale-95 shadow-xs"
+                        title="فتح المستند مباشرة عبر البروكسي دون وسيط"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>فتح المستند</span>
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenFile(file);
+                        }}
+                        className="px-3 py-1.5 bg-slate-950 hover:bg-slate-900 text-amber-400 hover:text-amber-300 text-[10px] font-extrabold rounded-lg transition-all flex items-center gap-1 cursor-pointer active:scale-95 shadow-xs"
+                        title="فتح المستند مباشرة عبر البروكسي دون وسيط"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>فتح المستند</span>
+                      </button>
+                    )}
                     <button
                       type="button"
-                      onClick={() => handleViewFile(file)}
-                      className="px-3 py-1.5 bg-slate-950 hover:bg-slate-900 text-amber-400 hover:text-amber-300 text-[10px] font-extrabold rounded-lg transition-all flex items-center gap-1 cursor-pointer active:scale-95"
-                      title="عرض المستند ومعاينته في عارض المستندات"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>عرض المستند</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDownloadFile(file)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDownloadFile(file);
+                      }}
                       disabled={downloadingId === (file.id || file.name)}
                       className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 hover:text-slate-950 text-[10px] font-extrabold rounded-lg transition-all flex items-center gap-1 cursor-pointer active:scale-95 disabled:opacity-50"
                       title="تحميل المستند إلى جهازك مباشرة"
@@ -3339,15 +3405,6 @@ function DocumentsTab({
           </div>
         )}
       </div>
-
-      {/* Direct In-App Popup Document Viewer Modal */}
-      {viewingFile && (
-        <DocumentViewerModal
-          file={viewingFile}
-          caseData={localCase}
-          onClose={() => setViewingFile(null)}
-        />
-      )}
     </motion.div>
   );
 }
