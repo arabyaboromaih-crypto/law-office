@@ -4001,29 +4001,6 @@ export default function CasesPanel({
                   </label>
                 </div>
 
-                {caseType === 'جنايات' && (
-                  <div className="mt-4 p-3 bg-amber-50/70 border border-amber-200/90 rounded-2xl animate-in fade-in slide-in-from-top-2 duration-200">
-                    <FormField label="الرقم الكلي (أمام محكمة الجنايات)" isMono>
-                      <div className="relative">
-                        <span className="absolute right-3 top-2.5 text-amber-700 text-xs font-bold font-mono">
-                          كلي
-                        </span>
-                        <input
-                          type="text"
-                          placeholder="مثال: 1250 لسنة 2026 كلي شمال القاهرة"
-                          value={totalCaseNumber}
-                          onChange={(e) => setTotalCaseNumber(e.target.value)}
-                          className="w-full pr-12 pl-3 py-2 bg-white border border-amber-300 rounded-xl text-xs focus:outline-none focus:ring-3 focus:ring-amber-500/20 focus:border-amber-500 transition-all font-mono text-left"
-                          dir="ltr"
-                        />
-                      </div>
-                    </FormField>
-                    <p className="text-[11px] text-amber-800/90 font-medium mt-1.5">
-                      الرقم الكلي للقضية أمام محكمة الجنايات، مع الاحتفاظ برقم القضية أمام أول درجة أدناه دون استبداله.
-                    </p>
-                  </div>
-                )}
-
                 {caseType === 'أخرى' && (
                   <div className="mt-4">
                     <FormField label="اكتب نوع القضية المخصص" required>
