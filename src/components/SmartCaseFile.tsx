@@ -20,6 +20,7 @@ import { AddHearingModal } from './AddHearingModal';
 import ComprehensiveCaseReportModal from './ComprehensiveCaseReportModal';
 import { DetentionRenewalsModal } from './DetentionRenewalsModal';
 import CaseDocumentsModal from './CaseDocumentsModal';
+import SearchableClientDropdown from './SearchableClientDropdown';
 import { isExpertSession, isDetentionSession } from './SessionCard';
 import { getEffectiveStageInfo, computeCaseDegree } from '../utils/stageUtils';
 import { deduplicateSessions, normalizeCaseNumber } from '../utils/hearingSync';
@@ -1972,31 +1973,24 @@ function OverviewTab({
 
                       <FormGrid cols={4}>
                         <FormField label="اختر موكل مسجل بالنظام (اختياري)">
-                          <select
-                            value={clients && clients.some(c => c && c.name === cl?.name) ? (cl?.name || '') : ''}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              if (val) {
-                                const found = clients?.find(c => c && c.name === val);
-                                if (found) {
-                                  updateFormClient(idx, {
-                                    name: found.name,
-                                    phone: found.phone || '',
-                                    email: found.email || '',
-                                    id: found.id
-                                  });
-                                }
+                          <SearchableClientDropdown
+                            clients={clients || []}
+                            selectedName={cl?.name || ''}
+                            selectedId={cl?.id || ''}
+                            onSelect={(found) => {
+                              if (found) {
+                                updateFormClient(idx, {
+                                  name: found.name,
+                                  phone: found.phone || '',
+                                  email: found.email || '',
+                                  id: found.id
+                                });
                               } else {
                                 updateFormClient(idx, { name: '', phone: '', email: '', id: '' });
                               }
                             }}
-                            className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs cursor-pointer"
-                          >
-                            <option value="">-- اختيار موكل مسجل --</option>
-                            {clients?.map(c => (
-                              <option key={c?.id || Math.random()} value={c?.name || ''}>{c?.name || 'موكل'}</option>
-                            ))}
-                          </select>
+                            hasError={!cl?.name?.trim()}
+                          />
                         </FormField>
 
                         <FormField label="الاسم بالكامل (مطلوب)" required>

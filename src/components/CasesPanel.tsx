@@ -38,6 +38,7 @@ import { ComprehensiveCaseReportModal } from './ComprehensiveCaseReportModal';
 import { DetentionRenewalsModal } from './DetentionRenewalsModal';
 import CaseDocumentsModal from './CaseDocumentsModal';
 import DocumentViewerModal from './DocumentViewerModal';
+import SearchableClientDropdown from './SearchableClientDropdown';
 import { isExpertSession, isDetentionSession } from './SessionCard';
 
 /**
@@ -4553,12 +4554,12 @@ export default function CasesPanel({
                       <FormGrid cols={4}>
                         <FormField label="اختر موكل مسجل بالنظام (اختياري)">
                           <div className="flex items-center gap-1.5">
-                            <select
-                              value={clients.some(c => c && c.name === cl?.name) ? (cl?.name || '') : ''}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                if (val) {
-                                  const found = clients.find(c => c && c.name === val);
+                            <div className="flex-1 min-w-0">
+                              <SearchableClientDropdown
+                                clients={clients || []}
+                                selectedName={cl?.name || ''}
+                                selectedId={cl?.id || ''}
+                                onSelect={(found) => {
                                   if (found) {
                                     updateFormClient(idx, {
                                       name: found.name,
@@ -4566,25 +4567,19 @@ export default function CasesPanel({
                                       email: found.email || '',
                                       id: found.id
                                     });
+                                  } else {
+                                    updateFormClient(idx, { name: '', phone: '', email: '', id: '' });
                                   }
-                                } else {
-                                  updateFormClient(idx, { name: '', phone: '', email: '', id: '' });
-                                }
-                              }}
-                              className={`flex-1 min-w-0 px-3 py-1.5 bg-white border rounded-lg text-xs transition-all ${
-                                !cl?.name?.trim() ? 'border-amber-400 ring-2 ring-amber-400/20 bg-amber-50/30 font-semibold' : 'border-slate-200'
-                              }`}
-                            >
-                              <option value="">-- اختيار موكل مسجل --</option>
-                              {(clients || []).map(c => c ? (
-                                <option key={c.id || Math.random()} value={c.name || ''}>{c.name || 'موكل'}</option>
-                              ) : null)}
-                            </select>
+                                }}
+                                onOpenManualModal={() => handleOpenManualClientModal(idx)}
+                                hasError={!cl?.name?.trim()}
+                              />
+                            </div>
                             <button
                               type="button"
                               onClick={() => handleOpenManualClientModal(idx)}
                               title="إضافة موكل يدويًا وتسجيله مباشرة في قاعدة البيانات"
-                              className="shrink-0 px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 rounded-lg text-xs font-black transition-all flex items-center gap-1 shadow-xs cursor-pointer whitespace-nowrap"
+                              className="shrink-0 px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 rounded-lg text-xs font-black transition-all flex items-center gap-1 shadow-xs cursor-pointer whitespace-nowrap min-h-[38px]"
                             >
                               <UserPlus className="w-3.5 h-3.5 text-slate-950" />
                               <span className="hidden xl:inline">إضافة موكل يدويًا</span>
