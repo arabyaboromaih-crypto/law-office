@@ -1971,72 +1971,77 @@ function OverviewTab({
                         )}
                       </div>
 
-                      <FormGrid cols={4}>
-                        <FormField label="اختر موكل مسجل بالنظام (اختياري)">
-                          <SearchableClientDropdown
-                            clients={clients || []}
-                            selectedName={cl?.name || ''}
-                            selectedId={cl?.id || ''}
-                            onSelect={(found) => {
-                              if (found) {
-                                updateFormClient(idx, {
-                                  name: found.name,
-                                  phone: found.phone || '',
-                                  email: found.email || '',
-                                  id: found.id
-                                });
-                              } else {
-                                updateFormClient(idx, { name: '', phone: '', email: '', id: '' });
-                              }
-                            }}
-                            hasError={!cl?.name?.trim()}
-                          />
-                        </FormField>
+                      <div className="space-y-3.5">
+                        {/* Wide Client Search & Selection Bar */}
+                        <div className="bg-white p-3.5 rounded-xl border border-slate-200/90 shadow-2xs">
+                          <FormField label="🔍 اختيار الموكل المسجل بالنظام (البحث الفوري بالاسم الثلاثي كاملًا أو جزء منه أو بالهاتف)">
+                            <SearchableClientDropdown
+                              clients={clients || []}
+                              selectedName={cl?.name || ''}
+                              selectedId={cl?.id || ''}
+                              onSelect={(found) => {
+                                if (found) {
+                                  updateFormClient(idx, {
+                                    name: found.name,
+                                    phone: found.phone || '',
+                                    email: found.email || '',
+                                    id: found.id
+                                  });
+                                } else {
+                                  updateFormClient(idx, { name: '', phone: '', email: '', id: '' });
+                                }
+                              }}
+                              hasError={!cl?.name?.trim()}
+                              placeholder="🔍 اكتب اسم الموكل (ثلاثي/كامل) أو جزءًا منه أو رقم الهاتف للبحث السريع..."
+                            />
+                          </FormField>
+                        </div>
 
-                        <FormField label="الاسم بالكامل (مطلوب)" required>
-                          <input
-                            type="text"
-                            placeholder="مثال: أحمد محمد علي"
-                            value={cl?.name || ''}
-                            onChange={(e) => updateFormClient(idx, { name: e.target.value })}
-                            required
-                            className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold"
-                          />
-                        </FormField>
+                        {/* Client Details Grid */}
+                        <FormGrid cols={4}>
+                          <FormField label="الاسم بالكامل (مطلوب)" required>
+                            <input
+                              type="text"
+                              placeholder="مثال: أحمد محمد علي"
+                              value={cl?.name || ''}
+                              onChange={(e) => updateFormClient(idx, { name: e.target.value })}
+                              required
+                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold"
+                            />
+                          </FormField>
 
-                        <FormField label="الصفة بالدعوى (مطلوب)" required>
-                          <SearchableDropdown
-                            value={cl.role || ''}
-                            onChange={(val) => updateFormClient(idx, { role: val })}
-                            options={capacityOptions}
-                            placeholder="اختر الصفة بالدعوى (مطلوب)"
-                            required
-                          />
-                        </FormField>
+                          <FormField label="الصفة بالدعوى (مطلوب)" required>
+                            <SearchableDropdown
+                              value={cl.role || ''}
+                              onChange={(val) => updateFormClient(idx, { role: val })}
+                              options={capacityOptions}
+                              placeholder="اختر الصفة بالدعوى (مطلوب)"
+                              required
+                            />
+                          </FormField>
 
-                        <FormField label="رقم الهاتف (اختياري)" isMono>
-                          <input
-                            type="tel"
-                            placeholder="مثال: 01xxxxxxxxx"
-                            value={cl.phone}
-                            onChange={(e) => updateFormClient(idx, { phone: e.target.value })}
-                            className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono text-left"
-                            dir="ltr"
-                          />
-                        </FormField>
-                      </FormGrid>
+                          <FormField label="رقم الهاتف (اختياري)" isMono>
+                            <input
+                              type="tel"
+                              placeholder="مثال: 01xxxxxxxxx"
+                              value={cl.phone}
+                              onChange={(e) => updateFormClient(idx, { phone: e.target.value })}
+                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono text-left"
+                              dir="ltr"
+                            />
+                          </FormField>
 
-                      <div className="mt-3">
-                        <FormField label="البريد الإلكتروني (اختياري)" isMono>
-                          <input
-                            type="email"
-                            placeholder="example@mail.com"
-                            value={cl.email}
-                            onChange={(e) => updateFormClient(idx, { email: e.target.value })}
-                            className="w-full max-w-md px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono text-left"
-                            dir="ltr"
-                          />
-                        </FormField>
+                          <FormField label="البريد الإلكتروني (اختياري)" isMono>
+                            <input
+                              type="email"
+                              placeholder="example@mail.com"
+                              value={cl.email}
+                              onChange={(e) => updateFormClient(idx, { email: e.target.value })}
+                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono text-left"
+                              dir="ltr"
+                            />
+                          </FormField>
+                        </FormGrid>
                       </div>
                     </div>
                   ))}

@@ -122,7 +122,7 @@ export default function SearchableClientDropdown({
           setIsOpen(true);
           inputRef.current?.focus();
         }}
-        className={`w-full min-h-[38px] px-2.5 py-1.5 bg-white border rounded-lg text-xs flex items-center justify-between gap-1.5 transition-all cursor-pointer ${
+        className={`w-full min-h-[42px] px-3 py-2 bg-white border rounded-xl text-xs sm:text-sm flex items-center justify-between gap-2 transition-all cursor-pointer ${
           hasError && !selectedName
             ? 'border-amber-400 ring-2 ring-amber-400/20 bg-amber-50/20'
             : isOpen
@@ -130,8 +130,8 @@ export default function SearchableClientDropdown({
             : 'border-slate-200 hover:border-amber-400'
         }`}
       >
-        <div className="flex items-center gap-1.5 min-w-0 flex-1">
-          <Search className={`w-3.5 h-3.5 shrink-0 ${isOpen ? 'text-amber-600' : 'text-slate-400'}`} />
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <Search className={`w-4 h-4 shrink-0 ${isOpen ? 'text-amber-600' : 'text-slate-400'}`} />
           {isOpen ? (
             <input
               ref={inputRef}
@@ -139,33 +139,38 @@ export default function SearchableClientDropdown({
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder={selectedClient ? `المحدد: ${selectedClient.name} (اكتب اسمًا آخر للبحث...)` : placeholder}
-              className="w-full bg-transparent text-xs font-bold text-slate-900 focus:outline-hidden placeholder:text-slate-400 placeholder:font-normal"
+              className="w-full bg-transparent text-xs sm:text-sm font-bold text-slate-900 focus:outline-hidden placeholder:text-slate-400 placeholder:font-normal"
               onClick={(e) => e.stopPropagation()}
               autoFocus
             />
           ) : selectedClient ? (
-            <div className="flex items-center gap-1.5 truncate">
-              <span className="font-black text-slate-900 truncate">
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 min-w-0">
+              <span className="font-black text-slate-950 text-xs sm:text-sm whitespace-normal">
                 {selectedClient.name}
               </span>
               {selectedClient.phone && (
-                <span className="text-[10px] font-mono text-slate-500 shrink-0">
-                  ({selectedClient.phone})
+                <span className="text-[11px] font-mono text-slate-600 bg-slate-100 border border-slate-200/80 px-2 py-0.5 rounded-md shrink-0">
+                  {selectedClient.phone}
+                </span>
+              )}
+              {selectedClient.job && (
+                <span className="text-[10px] text-amber-800 bg-amber-50 border border-amber-200/60 px-2 py-0.5 rounded-md shrink-0 hidden md:inline">
+                  {selectedClient.job}
                 </span>
               )}
             </div>
           ) : selectedName ? (
-            <span className="font-black text-slate-900 truncate">
+            <span className="font-black text-slate-950 text-xs sm:text-sm whitespace-normal">
               {selectedName}
             </span>
           ) : (
-            <span className="text-slate-400 truncate font-normal">
+            <span className="text-slate-400 font-normal text-xs sm:text-sm">
               {placeholder}
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           {(selectedClient || selectedName || searchTerm) && (
             <button
               type="button"
@@ -187,32 +192,32 @@ export default function SearchableClientDropdown({
             }}
             className="p-0.5 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
           >
-            <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen ? 'rotate-180 text-amber-600' : ''}`} />
+            <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isOpen ? 'rotate-180 text-amber-600' : ''}`} />
           </button>
         </div>
       </div>
 
       {/* Floating Dropdown Results */}
       {isOpen && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden max-h-64 flex flex-col animate-in fade-in zoom-in-95 duration-150">
+        <div className="absolute z-50 w-full min-w-[320px] sm:min-w-[420px] mt-1 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden max-h-72 flex flex-col animate-in fade-in zoom-in-95 duration-150">
           {/* Header Info */}
-          <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-150 flex items-center justify-between text-[11px] font-bold text-slate-600">
+          <div className="px-3.5 py-2 bg-slate-50 border-b border-slate-150 flex items-center justify-between text-xs font-bold text-slate-600">
             <span>
               {searchTerm ? `نتائج البحث المطابقة لـ "${searchTerm}":` : 'اختر موكل مسجل بالنظام:'}
             </span>
-            <span className="text-[10px] bg-slate-200/80 px-2 py-0.5 rounded-full font-mono text-slate-700">
+            <span className="text-[11px] bg-slate-200/80 px-2.5 py-0.5 rounded-full font-mono text-slate-700">
               {filteredClients.length} موكل
             </span>
           </div>
 
           {/* Results List */}
-          <div className="overflow-y-auto max-h-52 divide-y divide-slate-100">
+          <div className="overflow-y-auto max-h-60 divide-y divide-slate-100">
             {filteredClients.length === 0 ? (
               <div className="p-4 text-center">
                 <p className="text-slate-600 text-xs font-bold mb-1">
                   لا يوجد موكل مسجل مطابق لـ "{searchTerm}"
                 </p>
-                <p className="text-[10px] text-slate-400 mb-2">
+                <p className="text-[11px] text-slate-400 mb-2">
                   يدعم البحث الاسم كاملًا أو جزءًا منه أو رقم الهاتف.
                 </p>
                 {onOpenManualModal && (
@@ -237,25 +242,25 @@ export default function SearchableClientDropdown({
                   <div
                     key={client.id || client.name}
                     onClick={() => handleSelect(client)}
-                    className={`px-3 py-2 flex items-center justify-between gap-2 hover:bg-amber-50/80 cursor-pointer transition-colors ${
+                    className={`px-3.5 py-2.5 flex items-center justify-between gap-3 hover:bg-amber-50/80 cursor-pointer transition-colors ${
                       isSelected ? 'bg-amber-50/90 font-black text-amber-950 border-r-4 border-amber-500' : 'text-slate-800'
                     }`}
                   >
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <User className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-amber-600' : 'text-slate-400'}`} />
-                        <span className="text-xs truncate font-bold">
+                      <div className="flex items-center gap-2">
+                        <User className={`w-4 h-4 shrink-0 ${isSelected ? 'text-amber-600' : 'text-slate-400'}`} />
+                        <span className="text-xs sm:text-sm font-bold text-slate-900 whitespace-normal">
                           {client.name}
                         </span>
                         {client.job && (
-                          <span className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-medium truncate">
+                          <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-medium shrink-0">
                             {client.job}
                           </span>
                         )}
                       </div>
                       {client.phone && (
-                        <div className="flex items-center gap-1 text-[10px] text-slate-500 font-mono mt-0.5 pr-5">
-                          <Phone className="w-2.5 h-2.5 text-slate-400" />
+                        <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-mono mt-1 pr-6">
+                          <Phone className="w-3 h-3 text-slate-400" />
                           <span>{client.phone}</span>
                         </div>
                       )}

@@ -4551,89 +4551,93 @@ export default function CasesPanel({
                       </div>
 
                       {/* Card Body */}
-                      <FormGrid cols={4}>
-                        <FormField label="اختر موكل مسجل بالنظام (اختياري)">
-                          <div className="flex items-center gap-1.5">
-                            <div className="flex-1 min-w-0">
-                              <SearchableClientDropdown
-                                clients={clients || []}
-                                selectedName={cl?.name || ''}
-                                selectedId={cl?.id || ''}
-                                onSelect={(found) => {
-                                  if (found) {
-                                    updateFormClient(idx, {
-                                      name: found.name,
-                                      phone: found.phone || '',
-                                      email: found.email || '',
-                                      id: found.id
-                                    });
-                                  } else {
-                                    updateFormClient(idx, { name: '', phone: '', email: '', id: '' });
-                                  }
-                                }}
-                                onOpenManualModal={() => handleOpenManualClientModal(idx)}
-                                hasError={!cl?.name?.trim()}
-                              />
+                      <div className="space-y-3.5">
+                        {/* Wide Client Search & Selection Bar */}
+                        <div className="bg-white p-3.5 rounded-xl border border-slate-200/90 shadow-2xs">
+                          <FormField label="🔍 اختيار الموكل المسجل بالنظام (البحث الفوري بالاسم الثلاثي كاملًا أو جزء منه أو بالهاتف)">
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                              <div className="flex-1 min-w-0">
+                                <SearchableClientDropdown
+                                  clients={clients || []}
+                                  selectedName={cl?.name || ''}
+                                  selectedId={cl?.id || ''}
+                                  onSelect={(found) => {
+                                    if (found) {
+                                      updateFormClient(idx, {
+                                        name: found.name,
+                                        phone: found.phone || '',
+                                        email: found.email || '',
+                                        id: found.id
+                                      });
+                                    } else {
+                                      updateFormClient(idx, { name: '', phone: '', email: '', id: '' });
+                                    }
+                                  }}
+                                  onOpenManualModal={() => handleOpenManualClientModal(idx)}
+                                  hasError={!cl?.name?.trim()}
+                                  placeholder="🔍 اكتب اسم الموكل (ثلاثي/كامل) أو جزءًا منه أو رقم الهاتف للبحث السريع..."
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenManualClientModal(idx)}
+                                title="إضافة موكل يدويًا وتسجيله مباشرة في قاعدة البيانات"
+                                className="shrink-0 px-3.5 py-2 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer whitespace-nowrap min-h-[42px]"
+                              >
+                                <UserPlus className="w-3.5 h-3.5 text-slate-950" />
+                                <span>+ تسجيل موكل جديد يدويًا</span>
+                              </button>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenManualClientModal(idx)}
-                              title="إضافة موكل يدويًا وتسجيله مباشرة في قاعدة البيانات"
-                              className="shrink-0 px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 rounded-lg text-xs font-black transition-all flex items-center gap-1 shadow-xs cursor-pointer whitespace-nowrap min-h-[38px]"
-                            >
-                              <UserPlus className="w-3.5 h-3.5 text-slate-950" />
-                              <span className="hidden xl:inline">إضافة موكل يدويًا</span>
-                              <span className="xl:hidden">إضافة يدويًا</span>
-                            </button>
-                          </div>
-                        </FormField>
+                          </FormField>
+                        </div>
 
-                        <FormField label="الاسم بالكامل (مطلوب)" required>
-                          <input
-                            type="text"
-                            placeholder="مثال: أحمد محمد علي"
-                            value={cl?.name || ''}
-                            onChange={(e) => updateFormClient(idx, { name: e.target.value })}
-                            required
-                            className={`w-full px-3 py-1.5 bg-white border rounded-lg text-xs font-semibold transition-all ${
-                              !cl?.name?.trim() ? 'border-amber-400 ring-2 ring-amber-400/20 bg-amber-50/30' : 'border-slate-200'
-                            }`}
-                          />
-                        </FormField>
+                        {/* Client Details Grid */}
+                        <FormGrid cols={4}>
+                          <FormField label="الاسم بالكامل (مطلوب)" required>
+                            <input
+                              type="text"
+                              placeholder="مثال: أحمد محمد علي"
+                              value={cl?.name || ''}
+                              onChange={(e) => updateFormClient(idx, { name: e.target.value })}
+                              required
+                              className={`w-full px-3 py-2 bg-white border rounded-xl text-xs font-semibold transition-all ${
+                                !cl?.name?.trim() ? 'border-amber-400 ring-2 ring-amber-400/20 bg-amber-50/30' : 'border-slate-200'
+                              }`}
+                            />
+                          </FormField>
 
-                        <FormField label="الصفة بالدعوى (مطلوب)" required>
-                          <SearchableDropdown
-                            value={cl.role || ''}
-                            onChange={(val) => updateFormClient(idx, { role: val })}
-                            options={capacityOptions}
-                            placeholder="اختر الصفة بالدعوى (مطلوب)"
-                            required
-                          />
-                        </FormField>
+                          <FormField label="الصفة بالدعوى (مطلوب)" required>
+                            <SearchableDropdown
+                              value={cl.role || ''}
+                              onChange={(val) => updateFormClient(idx, { role: val })}
+                              options={capacityOptions}
+                              placeholder="اختر الصفة بالدعوى (مطلوب)"
+                              required
+                            />
+                          </FormField>
 
-                        <FormField label="رقم الهاتف (اختياري)" isMono>
-                          <input
-                            type="tel"
-                            placeholder="مثال: 01xxxxxxxxx"
-                            value={cl.phone}
-                            onChange={(e) => updateFormClient(idx, { phone: e.target.value })}
-                            className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono text-left"
-                            dir="ltr"
-                          />
-                        </FormField>
-                      </FormGrid>
+                          <FormField label="رقم الهاتف (اختياري)" isMono>
+                            <input
+                              type="tel"
+                              placeholder="مثال: 01xxxxxxxxx"
+                              value={cl.phone}
+                              onChange={(e) => updateFormClient(idx, { phone: e.target.value })}
+                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono text-left"
+                              dir="ltr"
+                            />
+                          </FormField>
 
-                      <div className="mt-3">
-                        <FormField label="البريد الإلكتروني (اختياري)" isMono>
-                          <input
-                            type="email"
-                            placeholder="example@mail.com"
-                            value={cl.email}
-                            onChange={(e) => updateFormClient(idx, { email: e.target.value })}
-                            className="w-full max-w-md px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono text-left"
-                            dir="ltr"
-                          />
-                        </FormField>
+                          <FormField label="البريد الإلكتروني (اختياري)" isMono>
+                            <input
+                              type="email"
+                              placeholder="example@mail.com"
+                              value={cl.email}
+                              onChange={(e) => updateFormClient(idx, { email: e.target.value })}
+                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono text-left"
+                              dir="ltr"
+                            />
+                          </FormField>
+                        </FormGrid>
                       </div>
 
                       {(!cl?.name || !cl.name.trim()) && (
