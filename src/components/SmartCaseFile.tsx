@@ -1971,30 +1971,64 @@ function OverviewTab({
                         )}
                       </div>
 
-                      <div className="space-y-3.5">
-                        {/* Wide Client Search & Selection Bar */}
-                        <div className="bg-white p-3.5 rounded-xl border border-slate-200/90 shadow-2xs">
-                          <FormField label="🔍 اختيار الموكل المسجل بالنظام (البحث الفوري بالاسم الثلاثي كاملًا أو جزء منه أو بالهاتف)">
-                            <SearchableClientDropdown
-                              clients={clients || []}
-                              selectedName={cl?.name || ''}
-                              selectedId={cl?.id || ''}
-                              onSelect={(found) => {
-                                if (found) {
-                                  updateFormClient(idx, {
-                                    name: found.name,
-                                    phone: found.phone || '',
-                                    email: found.email || '',
-                                    id: found.id
-                                  });
-                                } else {
-                                  updateFormClient(idx, { name: '', phone: '', email: '', id: '' });
-                                }
-                              }}
-                              hasError={!cl?.name?.trim()}
-                              placeholder="🔍 اكتب اسم الموكل (ثلاثي/كامل) أو جزءًا منه أو رقم الهاتف للبحث السريع..."
-                            />
-                          </FormField>
+                      <div className="space-y-3">
+                        {/* Client Selection & Fast Search - Directly Adjacent Without Excess Space */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 items-end">
+                          <div>
+                            <FormField label="اختر موكل مسجل بالنظام (اختياري)">
+                              <select
+                                value={clients && clients.some(c => c && (c.id === cl?.id || c.name === cl?.name)) ? (cl?.id || cl?.name || '') : ''}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (val) {
+                                    const found = clients.find(c => c && (c.id === val || c.name === val));
+                                    if (found) {
+                                      updateFormClient(idx, {
+                                        name: found.name,
+                                        phone: found.phone || '',
+                                        email: found.email || '',
+                                        id: found.id
+                                      });
+                                    }
+                                  } else {
+                                    updateFormClient(idx, { name: '', phone: '', email: '', id: '' });
+                                  }
+                                }}
+                                className="w-full min-h-[42px] px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold cursor-pointer hover:border-amber-400 focus:outline-hidden transition-colors"
+                              >
+                                <option value="">-- اختر موكل مسجل بالنظام --</option>
+                                {(clients || []).map(c => c ? (
+                                  <option key={c.id || Math.random()} value={c.id || c.name || ''}>
+                                    {c.name || 'موكل'} {c.phone ? `(${c.phone})` : ''}
+                                  </option>
+                                ) : null)}
+                              </select>
+                            </FormField>
+                          </div>
+
+                          <div>
+                            <FormField label="🔍 خانة البحث السريع بالاسم (ثلاثي/كامل):">
+                              <SearchableClientDropdown
+                                clients={clients || []}
+                                selectedName={cl?.name || ''}
+                                selectedId={cl?.id || ''}
+                                onSelect={(found) => {
+                                  if (found) {
+                                    updateFormClient(idx, {
+                                      name: found.name,
+                                      phone: found.phone || '',
+                                      email: found.email || '',
+                                      id: found.id
+                                    });
+                                  } else {
+                                    updateFormClient(idx, { name: '', phone: '', email: '', id: '' });
+                                  }
+                                }}
+                                hasError={!cl?.name?.trim()}
+                                placeholder="🔍 اكتب اسم الموكل (ثلاثي/كامل) للبحث الفوري..."
+                              />
+                            </FormField>
+                          </div>
                         </div>
 
                         {/* Client Details Grid */}

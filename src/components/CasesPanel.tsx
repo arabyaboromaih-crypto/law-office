@@ -4551,17 +4551,17 @@ export default function CasesPanel({
                       </div>
 
                       {/* Card Body */}
-                      <div className="space-y-3.5">
-                        {/* Wide Client Search & Selection Bar */}
-                        <div className="bg-white p-3.5 rounded-xl border border-slate-200/90 shadow-2xs">
-                          <FormField label="🔍 اختيار الموكل المسجل بالنظام (البحث الفوري بالاسم الثلاثي كاملًا أو جزء منه أو بالهاتف)">
-                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                              <div className="flex-1 min-w-0">
-                                <SearchableClientDropdown
-                                  clients={clients || []}
-                                  selectedName={cl?.name || ''}
-                                  selectedId={cl?.id || ''}
-                                  onSelect={(found) => {
+                      <div className="space-y-3">
+                        {/* Client Selection & Fast Search - Directly Adjacent Without Excess Space */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-2.5 items-end">
+                          <div className="lg:col-span-5">
+                            <FormField label="اختر موكل مسجل بالنظام (اختياري)">
+                              <select
+                                value={clients && clients.some(c => c && (c.id === cl?.id || c.name === cl?.name)) ? (cl?.id || cl?.name || '') : ''}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (val) {
+                                    const found = clients.find(c => c && (c.id === val || c.name === val));
                                     if (found) {
                                       updateFormClient(idx, {
                                         name: found.name,
@@ -4569,26 +4569,61 @@ export default function CasesPanel({
                                         email: found.email || '',
                                         id: found.id
                                       });
-                                    } else {
-                                      updateFormClient(idx, { name: '', phone: '', email: '', id: '' });
                                     }
-                                  }}
-                                  onOpenManualModal={() => handleOpenManualClientModal(idx)}
-                                  hasError={!cl?.name?.trim()}
-                                  placeholder="🔍 اكتب اسم الموكل (ثلاثي/كامل) أو جزءًا منه أو رقم الهاتف للبحث السريع..."
-                                />
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => handleOpenManualClientModal(idx)}
-                                title="إضافة موكل يدويًا وتسجيله مباشرة في قاعدة البيانات"
-                                className="shrink-0 px-3.5 py-2 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer whitespace-nowrap min-h-[42px]"
+                                  } else {
+                                    updateFormClient(idx, { name: '', phone: '', email: '', id: '' });
+                                  }
+                                }}
+                                className={`w-full min-h-[42px] px-3 py-2 bg-white border rounded-xl text-xs font-semibold cursor-pointer transition-all ${
+                                  !cl?.name?.trim() ? 'border-amber-400 ring-2 ring-amber-400/20 bg-amber-50/20' : 'border-slate-200 hover:border-amber-400'
+                                }`}
                               >
-                                <UserPlus className="w-3.5 h-3.5 text-slate-950" />
-                                <span>+ تسجيل موكل جديد يدويًا</span>
-                              </button>
-                            </div>
-                          </FormField>
+                                <option value="">-- اختر موكل مسجل بالنظام --</option>
+                                {(clients || []).map(c => c ? (
+                                  <option key={c.id || Math.random()} value={c.id || c.name || ''}>
+                                    {c.name || 'موكل'} {c.phone ? `(${c.phone})` : ''}
+                                  </option>
+                                ) : null)}
+                              </select>
+                            </FormField>
+                          </div>
+
+                          <div className="lg:col-span-5">
+                            <FormField label="🔍 خانة البحث السريع بالاسم (ثلاثي/كامل):">
+                              <SearchableClientDropdown
+                                clients={clients || []}
+                                selectedName={cl?.name || ''}
+                                selectedId={cl?.id || ''}
+                                onSelect={(found) => {
+                                  if (found) {
+                                    updateFormClient(idx, {
+                                      name: found.name,
+                                      phone: found.phone || '',
+                                      email: found.email || '',
+                                      id: found.id
+                                    });
+                                  } else {
+                                    updateFormClient(idx, { name: '', phone: '', email: '', id: '' });
+                                  }
+                                }}
+                                onOpenManualModal={() => handleOpenManualClientModal(idx)}
+                                hasError={!cl?.name?.trim()}
+                                placeholder="🔍 اكتب اسم الموكل (ثلاثي/كامل) للبحث الفوري..."
+                              />
+                            </FormField>
+                          </div>
+
+                          <div className="lg:col-span-2">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenManualClientModal(idx)}
+                              title="إضافة موكل يدويًا وتسجيله مباشرة في قاعدة البيانات"
+                              className="w-full px-3 py-2 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer whitespace-nowrap min-h-[42px]"
+                            >
+                              <UserPlus className="w-3.5 h-3.5 text-slate-950" />
+                              <span>+ تسجيل يدوي</span>
+                            </button>
+                          </div>
                         </div>
 
                         {/* Client Details Grid */}
