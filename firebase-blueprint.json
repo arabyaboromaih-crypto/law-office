@@ -50,7 +50,11 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "caseNumberFirstInstance": { "type": "string" }
+        "caseNumberFirstInstance": { "type": "string" },
+        "administrativeNumber": { "type": "string" },
+        "administrativeYear": { "type": "string" },
+        "misdemeanorNumber": { "type": "string" },
+        "misdemeanorYear": { "type": "string" }
       }
     },
     "HearingSession": {
@@ -59,7 +63,24 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "caseId": { "type": "string" }
+        "caseId": { "type": "string" },
+        "caseNumber": { "type": "string" },
+        "caseYear": { "type": "string" },
+        "clientName": { "type": "string" },
+        "opponentName": { "type": "string" },
+        "court": { "type": "string" },
+        "circuit": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "subject": { "type": "string" },
+        "decision": { "type": "string" },
+        "nextHearingDate": { "type": "string" },
+        "status": { "type": "string" },
+        "whatHappened": { "type": "string" },
+        "requirements": { "type": "string" },
+        "rollPhotoUrl": { "type": "string" },
+        "isDetentionRenewal": { "type": "boolean" },
+        "sessionType": { "type": "string" }
       }
     },
     "LegalTask": {

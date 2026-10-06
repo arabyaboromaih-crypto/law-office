@@ -477,6 +477,10 @@ export default function CasesPanel({
   const [caseNo1st, setCaseNo1st] = useState('');
   const [caseYear1st, setCaseYear1st] = useState('2026');
   const [totalCaseNumber, setTotalCaseNumber] = useState('');
+  const [administrativeNumber, setAdministrativeNumber] = useState('');
+  const [administrativeYear, setAdministrativeYear] = useState('');
+  const [misdemeanorNumber, setMisdemeanorNumber] = useState('');
+  const [misdemeanorYear, setMisdemeanorYear] = useState('');
   const [caseNo2nd, setCaseNo2nd] = useState('');
   const [caseYear2nd, setCaseYear2nd] = useState('');
   const [cassationNumber, setCassationNumber] = useState('');
@@ -604,6 +608,9 @@ export default function CasesPanel({
       (c.clientName || '').includes(searchQuery) ||
       (c.officeFileNo && c.officeFileNo.includes(searchQuery)) ||
       (c.caseNumberFirstInstance || '').includes(searchQuery) ||
+      (c.totalCaseNumber && c.totalCaseNumber.includes(searchQuery)) ||
+      (c.administrativeNumber && c.administrativeNumber.includes(searchQuery)) ||
+      (c.misdemeanorNumber && c.misdemeanorNumber.includes(searchQuery)) ||
       (c.caseNumberSecondInstance && c.caseNumberSecondInstance.includes(searchQuery)) ||
       (c.court || '').includes(searchQuery) ||
       (c.opponent?.name || '').includes(searchQuery) ||
@@ -1205,6 +1212,10 @@ export default function CasesPanel({
     setCaseNo1st('');
     setCaseYear1st('2026');
     setTotalCaseNumber('');
+    setAdministrativeNumber('');
+    setAdministrativeYear('');
+    setMisdemeanorNumber('');
+    setMisdemeanorYear('');
     setCaseNo2nd('');
     setCaseYear2nd('');
     setCassationNumber('');
@@ -1292,6 +1303,10 @@ export default function CasesPanel({
     setCaseNo1st(c.caseNumberFirstInstance);
     setCaseYear1st(c.caseYearFirstInstance);
     setTotalCaseNumber(c.totalCaseNumber || '');
+    setAdministrativeNumber(c.administrativeNumber || '');
+    setAdministrativeYear(c.administrativeYear || '');
+    setMisdemeanorNumber(c.misdemeanorNumber || '');
+    setMisdemeanorYear(c.misdemeanorYear || '');
     setCaseNo2nd(c.caseNumberSecondInstance || '');
     setCaseYear2nd(c.caseYearSecondInstance || '');
     setCassationNumber(c.cassationNumber || '');
@@ -1307,7 +1322,7 @@ export default function CasesPanel({
     setCircuitCass(c.circuitCassation || (c.degree === 'نقض' ? c.circuit : '') || '');
     setShowAppealSection(!!(c.caseNumberSecondInstance || c.courtSecondInstance || c.degree === 'استئناف'));
     setShowCassationSection(!!(c.cassationNumber || c.courtCassation || c.degree === 'نقض'));
-    const standardCaseTypes = ['جنايات', 'جنائي', 'جنح', 'جنح طفل', 'جنح مرور', 'جنح مالية', 'جنح اقتصادية', 'تهرب ضريبي', 'ادارى', 'مخالفات', 'مدني', 'تجاري', 'تجارى', 'عمال', 'تعويضات', 'إيجارات', 'أحوال شخصية', 'صحة توقيع', 'مجلس الدولة', 'تنفيذ', 'إشكالات', 'منازعات تنفيذ'];
+    const standardCaseTypes = ['جنايات', 'جنائي', 'جنح', 'جنح طفل', 'جنح مرور', 'جنح مالية', 'جنح اقتصادية', 'تهرب ضريبي', 'ادارى', 'إداري', 'مخالفات', 'مدني', 'تجاري', 'تجارى', 'عمال', 'تعويضات', 'إيجارات', 'أحوال شخصية', 'صحة توقيع', 'مجلس الدولة', 'تنفيذ', 'إشكالات', 'منازعات تنفيذ'];
     if (c.type && standardCaseTypes.includes(c.type)) {
       setCaseType(c.type as CaseType);
       setCustomCaseType('');
@@ -1713,6 +1728,10 @@ export default function CasesPanel({
         caseNumberFirstInstance: finalCaseNo1st,
         caseYearFirstInstance: finalCaseYear1st,
         totalCaseNumber: actualCaseType === 'جنايات' ? ((totalCaseNumber || '').trim() || undefined) : undefined,
+        administrativeNumber: (actualCaseType === 'جنح') ? ((administrativeNumber || '').trim() || undefined) : undefined,
+        administrativeYear: (actualCaseType === 'جنح') ? ((administrativeYear || '').trim() || undefined) : undefined,
+        misdemeanorNumber: (actualCaseType === 'إداري' || actualCaseType === 'ادارى' || actualCaseType === 'اداري' || actualCaseType === 'إدارى') ? ((misdemeanorNumber || '').trim() || undefined) : undefined,
+        misdemeanorYear: (actualCaseType === 'إداري' || actualCaseType === 'ادارى' || actualCaseType === 'اداري' || actualCaseType === 'إدارى') ? ((misdemeanorYear || '').trim() || undefined) : undefined,
         caseNumberSecondInstance: caseNo2nd || undefined,
         caseYearSecondInstance: caseYear2nd || undefined,
         cassationNumber: cassationNumber || undefined,
@@ -2910,6 +2929,20 @@ export default function CasesPanel({
                                 <span>الرقم الكلي: <span className="font-mono font-black text-amber-950">{toAr(c.totalCaseNumber)}</span></span>
                               </div>
                             )}
+
+                            {c.administrativeNumber && (
+                              <div className="mt-1.5 text-xs text-amber-900 font-bold flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/25 px-2.5 py-1 rounded-lg">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-600" />
+                                <span>الرقم الإداري: <span className="font-mono font-black text-amber-950">{toAr(c.administrativeNumber)}</span>{c.administrativeYear ? ` لسنة ${toAr(c.administrativeYear)}` : ''}</span>
+                              </div>
+                            )}
+
+                            {c.misdemeanorNumber && (
+                              <div className="mt-1.5 text-xs text-rose-900 font-bold flex items-center gap-1.5 bg-rose-500/10 border border-rose-500/25 px-2.5 py-1 rounded-lg">
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-600" />
+                                <span>رقم الجنح: <span className="font-mono font-black text-rose-950">{toAr(c.misdemeanorNumber)}</span>{c.misdemeanorYear ? ` لسنة ${toAr(c.misdemeanorYear)}` : ''}</span>
+                              </div>
+                            )}
                             
                             {c.caseNumberSecondInstance && (
                               <div className="mt-2 text-xs text-slate-600 font-bold flex items-center gap-1.5 border-t border-slate-100 pt-1.5 border-dashed">
@@ -3911,6 +3944,7 @@ export default function CasesPanel({
                       <option value="جنح مالية">جنح مالية</option>
                       <option value="جنح اقتصادية">جنح اقتصادية</option>
                       <option value="تهرب ضريبي">تهرب ضريبي</option>
+                      <option value="إداري">إداري</option>
                       <option value="ادارى">ادارى</option>
                       <option value="مخالفات">مخالفات</option>
                       <option value="مدني">مدني</option>
@@ -4013,6 +4047,70 @@ export default function CasesPanel({
                         className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-3 focus:ring-amber-500/15 focus:border-amber-500 transition-all font-sans"
                       />
                     </FormField>
+                  </div>
+                )}
+
+                {/* الحقول التلقائية عند اختيار «جنح»: الرقم الإداري وسنة الرقم إن وُجد */}
+                {caseType === 'جنح' && (
+                  <div className="mt-4 p-3.5 bg-amber-50/80 border border-amber-200/90 rounded-2xl shadow-3xs animate-fadeIn">
+                    <div className="flex items-center gap-2 mb-2.5 text-xs font-bold text-amber-900">
+                      <FileText className="w-4 h-4 text-amber-700" />
+                      <span>بيانات الرقم الإداري المرتبط (اختياري - خاص بقضايا الجنح):</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <FormField label="الرقم الإداري (اختياري)" isMono>
+                        <input
+                          type="text"
+                          placeholder="مثال: 1045"
+                          value={administrativeNumber}
+                          onChange={(e) => setAdministrativeNumber(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-amber-300/80 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-3 focus:ring-amber-500/15 focus:border-amber-500 transition-all text-left font-mono"
+                          dir="ltr"
+                        />
+                      </FormField>
+                      <FormField label="سنة الرقم الإداري (اختياري)" isMono>
+                        <input
+                          type="text"
+                          placeholder="مثال: 2026"
+                          value={administrativeYear}
+                          onChange={(e) => setAdministrativeYear(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-amber-300/80 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-3 focus:ring-amber-500/15 focus:border-amber-500 transition-all text-left font-mono"
+                          dir="ltr"
+                        />
+                      </FormField>
+                    </div>
+                  </div>
+                )}
+
+                {/* الحقول التلقائية عند اختيار «إداري»: رقم الجنح وسنة الرقم إن وُجد */}
+                {(caseType === 'إداري' || caseType === 'ادارى' || caseType === 'اداري' || caseType === 'إدارى') && (
+                  <div className="mt-4 p-3.5 bg-rose-50/80 border border-rose-200/90 rounded-2xl shadow-3xs animate-fadeIn">
+                    <div className="flex items-center gap-2 mb-2.5 text-xs font-bold text-rose-900">
+                      <FileText className="w-4 h-4 text-rose-700" />
+                      <span>بيانات رقم الجنح المرتبط (اختياري - خاص بالقضايا الإدارية):</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <FormField label="رقم الجنح (اختياري)" isMono>
+                        <input
+                          type="text"
+                          placeholder="مثال: 3254"
+                          value={misdemeanorNumber}
+                          onChange={(e) => setMisdemeanorNumber(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-rose-300/80 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-3 focus:ring-rose-500/15 focus:border-rose-500 transition-all text-left font-mono"
+                          dir="ltr"
+                        />
+                      </FormField>
+                      <FormField label="سنة رقم الجنح (اختياري)" isMono>
+                        <input
+                          type="text"
+                          placeholder="مثال: 2026"
+                          value={misdemeanorYear}
+                          onChange={(e) => setMisdemeanorYear(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-rose-300/80 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-3 focus:ring-rose-500/15 focus:border-rose-500 transition-all text-left font-mono"
+                          dir="ltr"
+                        />
+                      </FormField>
+                    </div>
                   </div>
                 )}
               </FormCard>

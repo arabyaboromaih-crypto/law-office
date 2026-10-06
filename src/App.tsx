@@ -1506,7 +1506,12 @@ export default function App() {
   };
 
   const handleUpdateSession = async (updated: HearingSession) => {
-    if (!currentUser) return;
+    const effectiveUser = currentUser || sessionUser || (() => {
+      try {
+        const saved = localStorage.getItem('romeih_current_user');
+        return saved ? JSON.parse(saved) : null;
+      } catch { return null; }
+    })() || { fullName: 'المستخدم الحالي', role: 'admin' };
 
     try {
       const normUpdatedDate = normalizeHearingDate(updated.date);
@@ -1541,8 +1546,8 @@ export default function App() {
 
       const parentCase = cases.find(c => c.id === cleanUpdated.caseId || (c.caseNumberFirstInstance === cleanUpdated.caseNumber && (!cleanUpdated.caseYear || c.caseYearFirstInstance === cleanUpdated.caseYear)));
       if (parentCase) {
-        // Delete any redundant duplicate session records on this exact date for this case, merging their data first
-        if (normUpdatedDate) {
+        // Only run deduplication cleanup when NOT explicitly recording a decision (strictly preserve past sessions)
+        if (!hasDecisionText && normUpdatedDate) {
           const isCleanUpdatedDet = isDetentionSession(cleanUpdated, parentCase, cases);
           const isCleanUpdatedExp = !isCleanUpdatedDet && (cleanUpdated.sessionType === 'جلسة خبراء' || cleanUpdated.isExpertSession);
 
@@ -1795,7 +1800,8 @@ export default function App() {
         }
 
         // 2. Next Session Creation with Duplicate Prevention (unified across all session types!)
-        if (normNextDate && normNextDate !== normUpdatedDate) {
+        // When recording a decision on a session, do not auto-create extra session records
+        if (!hasDecisionText && normNextDate && normNextDate !== normUpdatedDate) {
           if (isReferralToCourt) {
             // Upon referral to court, ONLY schedule a regular court session (never detention renewal!)
             const courtSessionId = `session-court-${parentCase.id}-${normNextDate}`;
@@ -1976,8 +1982,8 @@ export default function App() {
         const updatedCasesList = cases.map(c => c.id === parentCase.id ? updatedCase : c);
         setCases(updatedCasesList);
 
-        // 5. For Detention & Expert, safely merge auto-generated sessions without creating duplicates (skipped if referred to court)
-        if ((isDetention || isExpert) && !isReferralToCourt) {
+        // 5. For Detention & Expert, safely merge auto-generated sessions without creating duplicates (skipped when recording decision or referred to court)
+        if (!hasDecisionText && (isDetention || isExpert) && !isReferralToCourt) {
           const currentCaseSessions = nextSessions.filter(s => s.caseId === updatedCase.id);
           const newCaseAutoSessions = generateExpectedAutoSessionsForCase(updatedCase, users);
           

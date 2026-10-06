@@ -346,11 +346,12 @@ export const DetentionRenewalsModal: React.FC<DetentionRenewalsModalProps> = ({
       }
 
       await onUpdateCase(updatedCase);
-      setSuccessMessage('تم حفظ قرار جلسة التجديد وتحديث الأجندة بنجاح');
+      alert('تم حفظ قرار الجلسة بنجاح');
+      setSuccessMessage('تم حفظ قرار الجلسة بنجاح');
       setTimeout(() => {
         setSuccessMessage(null);
         onClose();
-      }, 850);
+      }, 500);
     } catch (err) {
       console.error('Error saving detention renewal:', err);
       alert('حدث خطأ أثناء حفظ التجديد، يرجى المحاولة مرة أخرى.');
@@ -698,7 +699,7 @@ export const DetentionRenewalsModal: React.FC<DetentionRenewalsModalProps> = ({
                 className="w-full sm:flex-1 py-3 px-6 bg-gradient-to-r from-rose-700 via-rose-600 to-rose-700 hover:from-rose-600 hover:to-rose-500 text-white font-black text-sm rounded-xl shadow-md cursor-pointer transition-all active:scale-98 flex items-center justify-center gap-2 border border-rose-500"
               >
                 <CheckCircle className="w-4 h-4" />
-                <span>{isSaving ? 'جاري حفظ التجديد...' : (editingRecordId ? 'تحديث قرار جلسة التجديد' : 'حفظ قرار جلسة التجديد وتحديث الأجندة')}</span>
+                <span>{isSaving ? 'جاري حفظ التجديد...' : (editingRecordId ? 'حفظ تسجيل التعديل' : 'حفظ تسجيل قرار التجديد')}</span>
               </button>
 
               <button

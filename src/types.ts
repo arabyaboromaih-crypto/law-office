@@ -147,6 +147,7 @@ export type CaseType =
   | 'جنح اقتصادية'
   | 'تهرب ضريبي'
   | 'ادارى'
+  | 'إداري'
   | 'مخالفات'
   | 'مدني'
   | 'تجاري'
@@ -350,6 +351,10 @@ export interface Case {
   caseNumberFirstInstance: string; // رقم أول درجة
   caseYearFirstInstance: string; // سنة أول درجة
   totalCaseNumber?: string; // الرقم الكلي للقضية (أمام محكمة الجنايات)
+  administrativeNumber?: string; // الرقم الإداري (اختياري لقضايا الجنح)
+  administrativeYear?: string; // سنة الرقم الإداري (اختياري لقضايا الجنح)
+  misdemeanorNumber?: string; // رقم الجنح (اختياري للقضايا الإدارية)
+  misdemeanorYear?: string; // سنة رقم الجنح (اختياري للقضايا الإدارية)
   caseNumberSecondInstance?: string; // رقم ثاني درجة
   caseYearSecondInstance?: string; // سنة ثاني درجة
   cassationNumber?: string; // رقم طعن النقض

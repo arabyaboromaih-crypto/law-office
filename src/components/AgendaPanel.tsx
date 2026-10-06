@@ -571,20 +571,6 @@ export default function AgendaPanel({
       return;
     }
 
-    // جلسات تجديد الحبس: فتح نافذة تسجيل القرار عند عدم وجود قرار مسجل
-    // وحظر استعراض القرار نهائياً قبل تسجيله
-    if (isDet && !hasRealDecision) {
-      if (parentCase) {
-        const effectiveParentCase = parentCase.isInvestigationActive ? parentCase : { ...parentCase, isInvestigationActive: true };
-        setDetentionModalCase(effectiveParentCase);
-        setDetentionModalInitialDate(s.date);
-        return;
-      } else {
-        alert('يرجى تسجيل قرار جلسة تجديد الحبس أولاً. لا يُسمح باستعراض القرار قبل تسجيله.');
-        return;
-      }
-    }
-
     if (!isRecorded && normDate > todayStr) {
       alert('لا يمكن تسجيل قرار الجلسة قبل تاريخ انعقادها. تسجيل القرار متاح فقط في يوم انعقاد الجلسة أو بعدها.');
       return;
@@ -615,26 +601,34 @@ export default function AgendaPanel({
     e.preventDefault();
     if (!outcomeSession || isSubmittingOutcome) return;
 
+    // 1. التحقق من بيانات قرار الجلسة أولاً
+    const trimmedDecision = (decision || '').trim();
+    if (!trimmedDecision) {
+      alert('يرجى إدخال منطوق أو قرار الجلسة قبل الحفظ.');
+      return;
+    }
+
     try {
       setIsSubmittingOutcome(true);
-      const parentCase = cases.find(c => c.id === outcomeSession.caseId);
-      const isDet = isDetentionSession(outcomeSession, parentCase);
+      const parentCase = cases.find(c => c.id === outcomeSession.caseId || (c.caseNumberFirstInstance === outcomeSession.caseNumber && (!outcomeSession.caseYear || c.caseYearFirstInstance === outcomeSession.caseYear)));
+      const isDet = isDetentionSession(outcomeSession, parentCase, cases);
       const isExp = isExpertSession(outcomeSession);
       const isRegular = !isDet && !isExp;
       const durDays = Number(outcomeDetentionDurationDays) || 15;
-      const trimmedDecision = decision ? decision.trim() : '';
-      const hasDecision = trimmedDecision !== '';
 
       const cleanNextHearingDate = nextHearingDate ? nextHearingDate.trim() : undefined;
       const effectiveStatus: 'completed' | 'postponed' = cleanNextHearingDate ? 'postponed' : 'completed';
 
+      // 2. حفظ القرار على نفس الجلسة وتاريخها الأصلي دون نقل الجلسة أو تغيير تاريخها
       const updated: HearingSession = {
         ...outcomeSession,
+        id: outcomeSession.id,
+        date: outcomeSession.date,
         sessionType: outcomeSession.sessionType || (isDet ? 'جلسة تجديد حبس' : isExp ? 'جلسة خبراء' : 'جلسة عادية'),
-        status: (hasDecision || cleanNextHearingDate) ? effectiveStatus : (outcomeSession.status || 'pending'),
+        status: effectiveStatus,
         court: outcomeCourt || outcomeSession.court,
         circuit: outcomeCircuit || outcomeSession.circuit,
-        decision: hasDecision ? trimmedDecision : undefined,
+        decision: trimmedDecision,
         nextHearingDate: cleanNextHearingDate,
         nextHearingCircuit: isRegular && nextHearingDate
           ? (outcomeNextHearingCircuit.trim() || undefined)
@@ -652,13 +646,20 @@ export default function AgendaPanel({
         detentionNextAuthority: isDet ? (outcomeDetentionNextAuthority || 'غرفة المشورة / النيابة') : undefined
       };
 
+      // الحفظ الفعلي في Firestore وفي الحالة
       await onUpdateSession(updated);
 
+      // إغلاق النافذة وتحديث العرض
       setIsEditingOutcome(false);
       setOutcomeSession(null);
-    } catch (err) {
+
+      // 3. إظهار الإشعار فقط بعد نجاح الحفظ الفعلي
+      alert('تم حفظ قرار الجلسة بنجاح');
+    } catch (err: any) {
       console.error("Failed to save session outcome:", err);
-      alert("حدث خطأ أثناء حفظ القرار في قاعدة البيانات. يرجى إعادة المحاولة.");
+      // 4. إذا فشل الحفظ: رسالة خطأ واضحة مع بقاء البيانات المدخلة وعدم فقدانها
+      const errMsg = err?.message || 'حدث خطأ أثناء حفظ القرار في قاعدة البيانات. يرجى إعادة المحاولة.';
+      alert(`تعذر حفظ قرار الجلسة: ${errMsg}`);
     } finally {
       setIsSubmittingOutcome(false);
     }
@@ -3239,8 +3240,9 @@ export default function AgendaPanel({
                       type="submit"
                       disabled={isSubmittingOutcome}
                       className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs px-5 py-2 rounded-xl shadow-md cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="حفظ تسجيل قرار الجلسة"
                     >
-                      {isSubmittingOutcome ? 'جاري الحفظ...' : (isEditingOutcome ? 'حفظ التعديلات وتحديث الأجندة' : 'حفظ وتحديث ملف القضية التلقائي')}
+                      {isSubmittingOutcome ? 'جاري الحفظ...' : (isEditingOutcome ? 'حفظ تسجيل التعديلات' : 'حفظ تسجيل')}
                     </button>
                   )}
                 </div>

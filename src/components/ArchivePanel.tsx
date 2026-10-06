@@ -869,6 +869,8 @@ export default function ArchivePanel({
       clientsMatch ||
       opponentsMatch ||
       (c.caseNumberFirstInstance || '').includes(searchQuery) ||
+      (c.administrativeNumber && c.administrativeNumber.includes(searchQuery)) ||
+      (c.misdemeanorNumber && c.misdemeanorNumber.includes(searchQuery)) ||
       (c.court || '').includes(searchQuery) ||
       (c.archiveReason && c.archiveReason.includes(searchQuery))
     );
