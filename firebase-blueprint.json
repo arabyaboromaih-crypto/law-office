@@ -54,7 +54,19 @@
         "administrativeNumber": { "type": "string" },
         "administrativeYear": { "type": "string" },
         "misdemeanorNumber": { "type": "string" },
-        "misdemeanorYear": { "type": "string" }
+        "misdemeanorYear": { "type": "string" },
+        "nextHearingDate1st": { "type": "string" },
+        "nextHearingTime1st": { "type": "string" },
+        "status1st": { "type": "string" },
+        "enforcementNo1st": { "type": "string" },
+        "nextHearingDate2nd": { "type": "string" },
+        "nextHearingTime2nd": { "type": "string" },
+        "status2nd": { "type": "string" },
+        "enforcementNo2nd": { "type": "string" },
+        "nextHearingDateCassation": { "type": "string" },
+        "nextHearingTimeCassation": { "type": "string" },
+        "statusCassation": { "type": "string" },
+        "enforcementNoCassation": { "type": "string" }
       }
     },
     "HearingSession": {

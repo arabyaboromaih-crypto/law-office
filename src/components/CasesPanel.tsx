@@ -38,6 +38,7 @@ import { ComprehensiveCaseReportModal } from './ComprehensiveCaseReportModal';
 import { DetentionRenewalsModal } from './DetentionRenewalsModal';
 import CaseDocumentsModal from './CaseDocumentsModal';
 import DocumentViewerModal from './DocumentViewerModal';
+import WhatsAppShareButton from './WhatsAppShareButton';
 import SearchableClientDropdown from './SearchableClientDropdown';
 import { isExpertSession, isDetentionSession } from './SessionCard';
 
@@ -496,6 +497,28 @@ export default function CasesPanel({
   const [circuitCass, setCircuitCass] = useState('');
   const [showAppealSection, setShowAppealSection] = useState(false);
   const [showCassationSection, setShowCassationSection] = useState(false);
+
+  // First Instance Follow-up & Next Hearing (مستقلة لمرحلة أول درجة)
+  const [noHearingSpecified1st, setNoHearingSpecified1st] = useState(false);
+  const [nextHearing1st, setNextHearing1st] = useState('');
+  const [nextHearingTime1st, setNextHearingTime1st] = useState('09:00');
+  const [status1st, setStatus1st] = useState('متداولة بجلسات المحكمة');
+  const [enforcementNo1st, setEnforcementNo1st] = useState('');
+
+  // Appeal Follow-up & Next Hearing (مستقلة لمرحلة الاستئناف)
+  const [noHearingSpecified2nd, setNoHearingSpecified2nd] = useState(false);
+  const [nextHearing2nd, setNextHearing2nd] = useState('');
+  const [nextHearingTime2nd, setNextHearingTime2nd] = useState('09:00');
+  const [status2nd, setStatus2nd] = useState('متداولة بجلسات المحكمة');
+  const [enforcementNo2nd, setEnforcementNo2nd] = useState('');
+
+  // Cassation Follow-up & Next Hearing (مستقلة لمرحلة الطعن بالنقض)
+  const [noHearingSpecifiedCass, setNoHearingSpecifiedCass] = useState(false);
+  const [nextHearingCass, setNextHearingCass] = useState('');
+  const [nextHearingTimeCass, setNextHearingTimeCass] = useState('09:00');
+  const [statusCass, setStatusCass] = useState('متداولة بجلسات المحكمة');
+  const [enforcementNoCass, setEnforcementNoCass] = useState('');
+
   const [caseType, setCaseType] = useState<CaseType>('جنح');
   const [customCaseType, setCustomCaseType] = useState('');
   const [court, setCourt] = useState('');
@@ -1239,6 +1262,28 @@ export default function CasesPanel({
     setNextHearing('');
     setNextHearingTime('09:00');
     setStatus('متداولة بجلسات المحكمة');
+    setEnforcementNo('');
+
+    // Reset First Instance follow-up
+    setNoHearingSpecified1st(false);
+    setNextHearing1st('');
+    setNextHearingTime1st('09:00');
+    setStatus1st('متداولة بجلسات المحكمة');
+    setEnforcementNo1st('');
+
+    // Reset Appeal follow-up
+    setNoHearingSpecified2nd(false);
+    setNextHearing2nd('');
+    setNextHearingTime2nd('09:00');
+    setStatus2nd('متداولة بجلسات المحكمة');
+    setEnforcementNo2nd('');
+
+    // Reset Cassation follow-up
+    setNoHearingSpecifiedCass(false);
+    setNextHearingCass('');
+    setNextHearingTimeCass('09:00');
+    setStatusCass('متداولة بجلسات المحكمة');
+    setEnforcementNoCass('');
     setClientName('');
     setFormClients([{
       name: '',
@@ -1345,6 +1390,34 @@ export default function CasesPanel({
       setNextHearingTime(resolvedNextHearingTime);
     }
     setStatus(c.status);
+    setEnforcementNo(c.enforcementNumber || '');
+
+    // 1. First Instance Follow-up & Next Hearing
+    const hasExplicit1st = c.nextHearingDate1st !== undefined || c.status1st !== undefined || c.noHearingSpecified1st !== undefined;
+    const isNoHearing1st = hasExplicit1st
+      ? (!c.nextHearingDate1st || !!c.noHearingSpecified1st)
+      : (!c.nextHearingDate || !!c.noUpcomingHearing);
+    setNoHearingSpecified1st(isNoHearing1st);
+    setNextHearing1st(isNoHearing1st ? '' : (c.nextHearingDate1st || c.nextHearingDate || ''));
+    setNextHearingTime1st(isNoHearing1st ? '09:00' : (c.nextHearingTime1st || c.nextHearingTime || '09:00'));
+    setStatus1st(c.status1st || (c.degree === 'أول درجة' ? c.status : '') || 'متداولة بجلسات المحكمة');
+    setEnforcementNo1st(c.enforcementNo1st || (c.degree === 'أول درجة' ? (c.enforcementNumber || '') : ''));
+
+    // 2. Appeal Follow-up & Next Hearing
+    const isNoHearing2nd = !c.nextHearingDate2nd || !!c.noHearingSpecified2nd;
+    setNoHearingSpecified2nd(isNoHearing2nd);
+    setNextHearing2nd(isNoHearing2nd ? '' : (c.nextHearingDate2nd || (c.degree === 'استئناف' ? (c.nextHearingDate || '') : '')));
+    setNextHearingTime2nd(isNoHearing2nd ? '09:00' : (c.nextHearingTime2nd || (c.degree === 'استئناف' ? (c.nextHearingTime || '09:00') : '09:00')));
+    setStatus2nd(c.status2nd || (c.degree === 'استئناف' ? c.status : '') || 'متداولة بجلسات المحكمة');
+    setEnforcementNo2nd(c.enforcementNo2nd || (c.degree === 'استئناف' ? (c.enforcementNumber || '') : ''));
+
+    // 3. Cassation Follow-up & Next Hearing
+    const isNoHearingCass = !c.nextHearingDateCassation || !!c.noHearingSpecifiedCassation;
+    setNoHearingSpecifiedCass(isNoHearingCass);
+    setNextHearingCass(isNoHearingCass ? '' : (c.nextHearingDateCassation || (c.degree === 'نقض' ? (c.nextHearingDate || '') : '')));
+    setNextHearingTimeCass(isNoHearingCass ? '09:00' : (c.nextHearingTimeCassation || (c.degree === 'نقض' ? (c.nextHearingTime || '09:00') : '09:00')));
+    setStatusCass(c.statusCassation || (c.degree === 'نقض' ? c.status : '') || 'متداولة بجلسات المحكمة');
+    setEnforcementNoCass(c.enforcementNoCassation || (c.degree === 'نقض' ? (c.enforcementNumber || '') : ''));
     setClientName(c.clientName);
     const matchedClient = clients.find(cl => cl && (cl.id === c.clientId || cl.name === c.clientName));
     const loadedClients: CaseClient[] = c.clientsList && c.clientsList.length > 0
@@ -1702,24 +1775,50 @@ export default function CasesPanel({
       const finalInvestigationNumber = (investigationNumber || '').trim() || editingCase?.investigationNumber || (isInvestigationActive ? 'قيد القيد' : undefined);
       const finalInvestigationYear = editingCase?.investigationYear || undefined;
 
-      // Resolve next hearing date from nextHearing state or latest detention renewal
-      let finalNextHearing: string | undefined = noHearingSpecified ? undefined : (nextHearing || undefined);
-      if (!noHearingSpecified) {
+      // Resolve stage-specific next hearing & status values
+      const finalNextHearing1st = noHearingSpecified1st ? undefined : (nextHearing1st ? nextHearing1st.trim() : undefined);
+      const finalNextHearingTime1st = noHearingSpecified1st ? undefined : (nextHearingTime1st || undefined);
+      const finalStatus1st = status1st || undefined;
+      const finalEnforcementNo1st = enforcementNo1st ? enforcementNo1st.trim() : undefined;
+
+      const finalNextHearing2nd = noHearingSpecified2nd ? undefined : (nextHearing2nd ? nextHearing2nd.trim() : undefined);
+      const finalNextHearingTime2nd = noHearingSpecified2nd ? undefined : (nextHearingTime2nd || undefined);
+      const finalStatus2nd = status2nd || undefined;
+      const finalEnforcementNo2nd = enforcementNo2nd ? enforcementNo2nd.trim() : undefined;
+
+      const finalNextHearingCass = noHearingSpecifiedCass ? undefined : (nextHearingCass ? nextHearingCass.trim() : undefined);
+      const finalNextHearingTimeCass = noHearingSpecifiedCass ? undefined : (nextHearingTimeCass || undefined);
+      const finalStatusCass = statusCass || undefined;
+      const finalEnforcementNoCass = enforcementNoCass ? enforcementNoCass.trim() : undefined;
+
+      // Determine top-level active hearing date and status according to active litigation degree
+      let activeNextHearing = finalNextHearing1st;
+      let activeNextHearingTime = finalNextHearingTime1st;
+      let activeNoHearing = noHearingSpecified1st;
+      let activeStatus = finalStatus1st || 'متداولة بجلسات المحكمة';
+      let activeEnforcementNo = finalEnforcementNo1st;
+
+      if (autoDegree === 'نقض') {
+        activeNextHearing = finalNextHearingCass !== undefined ? finalNextHearingCass : (finalNextHearing2nd !== undefined ? finalNextHearing2nd : finalNextHearing1st);
+        activeNextHearingTime = finalNextHearingCass !== undefined ? finalNextHearingTimeCass : (finalNextHearing2nd !== undefined ? finalNextHearingTime2nd : finalNextHearingTime1st);
+        activeNoHearing = noHearingSpecifiedCass;
+        activeStatus = finalStatusCass || 'متداولة بجلسات المحكمة';
+        activeEnforcementNo = finalEnforcementNoCass || finalEnforcementNo2nd || finalEnforcementNo1st;
+      } else if (autoDegree === 'استئناف') {
+        activeNextHearing = finalNextHearing2nd !== undefined ? finalNextHearing2nd : finalNextHearing1st;
+        activeNextHearingTime = finalNextHearing2nd !== undefined ? finalNextHearingTime2nd : finalNextHearingTime1st;
+        activeNoHearing = noHearingSpecified2nd;
+        activeStatus = finalStatus2nd || 'متداولة بجلسات المحكمة';
+        activeEnforcementNo = finalEnforcementNo2nd || finalEnforcementNo1st;
+      } else if (autoDegree === 'تحقيق') {
         if (isInvestigationActive && !isReferredToCourt && detentionRenewals && detentionRenewals.length > 0) {
           const pendingRenewals = detentionRenewals.filter(r => r.nextRenewalDate || (!r.decision && (r.renewalDate || r.date)));
           if (pendingRenewals.length > 0) {
             const lastRen = pendingRenewals[pendingRenewals.length - 1];
-            const renTargetDate = lastRen.nextRenewalDate || lastRen.renewalDate || lastRen.date;
-            if (renTargetDate) {
-              finalNextHearing = renTargetDate;
-            }
-          }
-        } else if (editingCase && (!nextHearing || nextHearing === editingCase.nextHearingDate)) {
-          const upcoming = getClosestUpcomingSession(editingCase, sessions);
-          if (upcoming.hasUpcoming && upcoming.date) {
-            finalNextHearing = upcoming.date;
+            activeNextHearing = lastRen.nextRenewalDate || lastRen.renewalDate || lastRen.date;
           }
         }
+        activeStatus = 'قيد التحقيق';
       }
 
       const caseData: Case = {
@@ -1739,19 +1838,34 @@ export default function CasesPanel({
         courtFirstInstance: court1st || undefined,
         venueFirstInstance: venue1st || undefined,
         circuitFirstInstance: circuit1st || undefined,
+        nextHearingDate1st: finalNextHearing1st,
+        nextHearingTime1st: finalNextHearingTime1st,
+        noHearingSpecified1st: noHearingSpecified1st,
+        status1st: finalStatus1st,
+        enforcementNo1st: finalEnforcementNo1st,
         courtSecondInstance: court2nd || undefined,
         venueSecondInstance: venue2nd || undefined,
         circuitSecondInstance: circuit2nd || undefined,
+        nextHearingDate2nd: finalNextHearing2nd,
+        nextHearingTime2nd: finalNextHearingTime2nd,
+        noHearingSpecified2nd: noHearingSpecified2nd,
+        status2nd: finalStatus2nd,
+        enforcementNo2nd: finalEnforcementNo2nd,
         courtCassation: courtCass || undefined,
         venueCassation: venueCass || undefined,
         circuitCassation: circuitCass || undefined,
+        nextHearingDateCassation: finalNextHearingCass,
+        nextHearingTimeCassation: finalNextHearingTimeCass,
+        noHearingSpecifiedCassation: noHearingSpecifiedCass,
+        statusCassation: finalStatusCass,
+        enforcementNoCassation: finalEnforcementNoCass,
         type: actualCaseType,
         court: primaryCourt,
         circuit: primaryCircuit,
-        nextHearingDate: finalNextHearing || undefined,
-        nextHearingTime: noHearingSpecified ? undefined : (nextHearingTime || undefined),
-        noUpcomingHearing: noHearingSpecified ? true : false,
-        status: updatedCaseStatus,
+        nextHearingDate: activeNextHearing,
+        nextHearingTime: activeNextHearingTime,
+        noUpcomingHearing: activeNoHearing,
+        status: updatedCaseStatus || activeStatus,
         clientName: primaryClientName,
         clientId: selectedClientId,
         opponent: {
@@ -1767,7 +1881,7 @@ export default function CasesPanel({
         notes: notes || undefined,
         subject: caseSubject || undefined,
         prosecutorName: prosecutor || undefined,
-        enforcementNumber: enforcementNo || undefined,
+        enforcementNumber: activeEnforcementNo,
         degree: autoDegree,
         totalFees: Number(totalFees),
         paidFees: Number(paidFees),
@@ -4178,6 +4292,101 @@ export default function CasesPanel({
                     </FormField>
                   )}
                 </FormGrid>
+
+                {/* المتابعة وتاريخ الجلسة القادمة لمرحلة أول درجة */}
+                <div className="mt-4 pt-3 border-t border-slate-150 space-y-3">
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+                    <Calendar className="w-4 h-4 text-amber-600" />
+                    <span>المتابعة وتاريخ الجلسة القادمة (أول درجة):</span>
+                  </div>
+                  <FormGrid cols={4}>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-slate-700 block">
+                          تاريخ الجلسة القادمة
+                        </label>
+                        <label className="inline-flex items-center gap-1.5 cursor-pointer select-none bg-slate-50 px-2 py-0.5 rounded-lg border border-slate-200/80 hover:bg-amber-50/50 hover:border-amber-200 transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={noHearingSpecified1st}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setNoHearingSpecified1st(checked);
+                              if (checked) {
+                                setNextHearing1st('');
+                              }
+                            }}
+                            className="w-3.5 h-3.5 text-amber-600 rounded border-slate-300 focus:ring-amber-500 cursor-pointer"
+                          />
+                          <span className="text-[11px] font-bold text-slate-600 hover:text-amber-700">
+                            لا توجد جلسة محددة
+                          </span>
+                        </label>
+                      </div>
+
+                      {noHearingSpecified1st ? (
+                        <div className="w-full px-3 py-2 bg-slate-100/90 border border-dashed border-slate-300 rounded-xl text-xs font-medium text-slate-500 flex items-center justify-between">
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+                            لا توجد جلسة محددة (غير مدرجة بالأجندة)
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNoHearingSpecified1st(false);
+                            }}
+                            className="text-[11px] text-amber-700 hover:text-amber-800 font-bold underline cursor-pointer"
+                          >
+                            تحديد تاريخ
+                          </button>
+                        </div>
+                      ) : (
+                        <input
+                          type="date"
+                          value={nextHearing1st}
+                          onChange={(e) => {
+                            setNextHearing1st(e.target.value);
+                            if (e.target.value) {
+                              setNoHearingSpecified1st(false);
+                            }
+                          }}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:bg-white focus:border-amber-500 transition-colors"
+                        />
+                      )}
+                    </div>
+                    <FormField label="ساعة انعقاد الجلسة" isMono>
+                      <input
+                        type="time"
+                        value={nextHearingTime1st}
+                        disabled={noHearingSpecified1st}
+                        onChange={(e) => setNextHearingTime1st(e.target.value)}
+                        className={`w-full px-3 py-2 border rounded-xl text-xs font-mono transition-colors ${
+                          noHearingSpecified1st 
+                            ? 'bg-slate-100/60 border-slate-200 text-slate-400 cursor-not-allowed' 
+                            : 'bg-slate-50 border-slate-200 text-slate-800 focus:bg-white'
+                        }`}
+                      />
+                    </FormField>
+                    <FormField label="حالة رول الجلسة والدعوى">
+                      <input
+                        type="text"
+                        placeholder="مثال: مؤجلة للاطلاع..."
+                        value={status1st}
+                        onChange={(e) => setStatus1st(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white"
+                      />
+                    </FormField>
+                    <FormField label="رقم الحصر (إن وجد)">
+                      <input
+                        type="text"
+                        placeholder="حصر التنفيذ أو الحصر العقاري"
+                        value={enforcementNo1st}
+                        onChange={(e) => setEnforcementNo1st(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white"
+                      />
+                    </FormField>
+                  </FormGrid>
+                </div>
               </FormCard>
 
               {/* Appeal Card */}
@@ -4194,6 +4403,11 @@ export default function CasesPanel({
                           setCourt2nd('');
                           setVenue2nd('');
                           setCircuit2nd('');
+                          setNextHearing2nd('');
+                          setNextHearingTime2nd('09:00');
+                          setNoHearingSpecified2nd(false);
+                          setStatus2nd('متداولة بجلسات المحكمة');
+                          setEnforcementNo2nd('');
                         }}
                         className="text-xs text-red-500 hover:text-red-700 font-bold"
                       >
@@ -4248,6 +4462,101 @@ export default function CasesPanel({
                       />
                     </FormField>
                   </FormGrid>
+
+                  {/* المتابعة وتاريخ الجلسة القادمة لمرحلة الاستئناف */}
+                  <div className="mt-4 pt-3 border-t border-slate-150 space-y-3">
+                    <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+                      <Calendar className="w-4 h-4 text-amber-600" />
+                      <span>المتابعة وتاريخ الجلسة القادمة (الاستئناف):</span>
+                    </div>
+                    <FormGrid cols={4}>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-slate-700 block">
+                            تاريخ الجلسة القادمة
+                          </label>
+                          <label className="inline-flex items-center gap-1.5 cursor-pointer select-none bg-slate-50 px-2 py-0.5 rounded-lg border border-slate-200/80 hover:bg-amber-50/50 hover:border-amber-200 transition-colors">
+                            <input
+                              type="checkbox"
+                              checked={noHearingSpecified2nd}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setNoHearingSpecified2nd(checked);
+                                if (checked) {
+                                  setNextHearing2nd('');
+                                }
+                              }}
+                              className="w-3.5 h-3.5 text-amber-600 rounded border-slate-300 focus:ring-amber-500 cursor-pointer"
+                            />
+                            <span className="text-[11px] font-bold text-slate-600 hover:text-amber-700">
+                              لا توجد جلسة محددة
+                            </span>
+                          </label>
+                        </div>
+
+                        {noHearingSpecified2nd ? (
+                          <div className="w-full px-3 py-2 bg-slate-100/90 border border-dashed border-slate-300 rounded-xl text-xs font-medium text-slate-500 flex items-center justify-between">
+                            <span className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+                              لا توجد جلسة محددة (غير مدرجة بالأجندة)
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setNoHearingSpecified2nd(false);
+                              }}
+                              className="text-[11px] text-amber-700 hover:text-amber-800 font-bold underline cursor-pointer"
+                            >
+                              تحديد تاريخ
+                            </button>
+                          </div>
+                        ) : (
+                          <input
+                            type="date"
+                            value={nextHearing2nd}
+                            onChange={(e) => {
+                              setNextHearing2nd(e.target.value);
+                              if (e.target.value) {
+                                setNoHearingSpecified2nd(false);
+                              }
+                            }}
+                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:bg-white focus:border-amber-500 transition-colors"
+                          />
+                        )}
+                      </div>
+                      <FormField label="ساعة انعقاد الجلسة" isMono>
+                        <input
+                          type="time"
+                          value={nextHearingTime2nd}
+                          disabled={noHearingSpecified2nd}
+                          onChange={(e) => setNextHearingTime2nd(e.target.value)}
+                          className={`w-full px-3 py-2 border rounded-xl text-xs font-mono transition-colors ${
+                            noHearingSpecified2nd 
+                              ? 'bg-slate-100/60 border-slate-200 text-slate-400 cursor-not-allowed' 
+                              : 'bg-slate-50 border-slate-200 text-slate-800 focus:bg-white'
+                          }`}
+                        />
+                      </FormField>
+                      <FormField label="حالة رول الجلسة والدعوى">
+                        <input
+                          type="text"
+                          placeholder="مثال: مؤجلة للاطلاع..."
+                          value={status2nd}
+                          onChange={(e) => setStatus2nd(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white"
+                        />
+                      </FormField>
+                      <FormField label="رقم الحصر (إن وجد)">
+                        <input
+                          type="text"
+                          placeholder="حصر التنفيذ أو الحصر العقاري"
+                          value={enforcementNo2nd}
+                          onChange={(e) => setEnforcementNo2nd(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white"
+                        />
+                      </FormField>
+                    </FormGrid>
+                  </div>
                 </FormCard>
               )}
 
@@ -4264,6 +4573,11 @@ export default function CasesPanel({
                           setCourtCass('');
                           setVenueCass('');
                           setCircuitCass('');
+                          setNextHearingCass('');
+                          setNextHearingTimeCass('09:00');
+                          setNoHearingSpecifiedCass(false);
+                          setStatusCass('متداولة بجلسات المحكمة');
+                          setEnforcementNoCass('');
                         }}
                         className="text-xs text-red-500 hover:text-red-700 font-bold"
                       >
@@ -4318,101 +4632,108 @@ export default function CasesPanel({
                       />
                     </FormField>
                   </FormGrid>
+
+                  {/* المتابعة وتاريخ الجلسة القادمة لمرحلة الطعن بالنقض */}
+                  <div className="mt-4 pt-3 border-t border-slate-150 space-y-3">
+                    <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+                      <Calendar className="w-4 h-4 text-amber-600" />
+                      <span>المتابعة وتاريخ الجلسة القادمة (النقض):</span>
+                    </div>
+                    <FormGrid cols={4}>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-slate-700 block">
+                            تاريخ الجلسة القادمة
+                          </label>
+                          <label className="inline-flex items-center gap-1.5 cursor-pointer select-none bg-slate-50 px-2 py-0.5 rounded-lg border border-slate-200/80 hover:bg-amber-50/50 hover:border-amber-200 transition-colors">
+                            <input
+                              type="checkbox"
+                              checked={noHearingSpecifiedCass}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setNoHearingSpecifiedCass(checked);
+                                if (checked) {
+                                  setNextHearingCass('');
+                                }
+                              }}
+                              className="w-3.5 h-3.5 text-amber-600 rounded border-slate-300 focus:ring-amber-500 cursor-pointer"
+                            />
+                            <span className="text-[11px] font-bold text-slate-600 hover:text-amber-700">
+                              لا توجد جلسة محددة
+                            </span>
+                          </label>
+                        </div>
+
+                        {noHearingSpecifiedCass ? (
+                          <div className="w-full px-3 py-2 bg-slate-100/90 border border-dashed border-slate-300 rounded-xl text-xs font-medium text-slate-500 flex items-center justify-between">
+                            <span className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+                              لا توجد جلسة محددة (غير مدرجة بالأجندة)
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setNoHearingSpecifiedCass(false);
+                              }}
+                              className="text-[11px] text-amber-700 hover:text-amber-800 font-bold underline cursor-pointer"
+                            >
+                              تحديد تاريخ
+                            </button>
+                          </div>
+                        ) : (
+                          <input
+                            type="date"
+                            value={nextHearingCass}
+                            onChange={(e) => {
+                              setNextHearingCass(e.target.value);
+                              if (e.target.value) {
+                                setNoHearingSpecifiedCass(false);
+                              }
+                            }}
+                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:bg-white focus:border-amber-500 transition-colors"
+                          />
+                        )}
+                      </div>
+                      <FormField label="ساعة انعقاد الجلسة" isMono>
+                        <input
+                          type="time"
+                          value={nextHearingTimeCass}
+                          disabled={noHearingSpecifiedCass}
+                          onChange={(e) => setNextHearingTimeCass(e.target.value)}
+                          className={`w-full px-3 py-2 border rounded-xl text-xs font-mono transition-colors ${
+                            noHearingSpecifiedCass 
+                              ? 'bg-slate-100/60 border-slate-200 text-slate-400 cursor-not-allowed' 
+                              : 'bg-slate-50 border-slate-200 text-slate-800 focus:bg-white'
+                          }`}
+                        />
+                      </FormField>
+                      <FormField label="حالة رول الجلسة والدعوى">
+                        <input
+                          type="text"
+                          placeholder="مثال: مؤجلة للاطلاع..."
+                          value={statusCass}
+                          onChange={(e) => setStatusCass(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white"
+                        />
+                      </FormField>
+                      <FormField label="رقم الحصر (إن وجد)">
+                        <input
+                          type="text"
+                          placeholder="حصر التنفيذ أو الحصر العقاري"
+                          value={enforcementNoCass}
+                          onChange={(e) => setEnforcementNoCass(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white"
+                        />
+                      </FormField>
+                    </FormGrid>
+                  </div>
                 </FormCard>
               )}
 
-              {/* Hearing & Extra Info row */}
-              <FormCard title="المتابعة وتاريخ الجلسة القادمة" icon={Calendar}>
-                <FormGrid cols={4}>
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-slate-700 block">
-                        تاريخ الجلسة القادمة
-                      </label>
-                      <label className="inline-flex items-center gap-1.5 cursor-pointer select-none bg-slate-50 px-2 py-0.5 rounded-lg border border-slate-200/80 hover:bg-amber-50/50 hover:border-amber-200 transition-colors">
-                        <input
-                          type="checkbox"
-                          checked={noHearingSpecified}
-                          onChange={(e) => {
-                            const checked = e.target.checked;
-                            setNoHearingSpecified(checked);
-                            if (checked) {
-                              setNextHearing('');
-                            }
-                          }}
-                          className="w-3.5 h-3.5 text-amber-600 rounded border-slate-300 focus:ring-amber-500 cursor-pointer"
-                        />
-                        <span className="text-[11px] font-bold text-slate-600 hover:text-amber-700">
-                          لا توجد جلسة محددة
-                        </span>
-                      </label>
-                    </div>
-
-                    {noHearingSpecified ? (
-                      <div className="w-full px-3 py-2 bg-slate-100/90 border border-dashed border-slate-300 rounded-xl text-xs font-medium text-slate-500 flex items-center justify-between">
-                        <span className="flex items-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full bg-slate-400"></span>
-                          لا توجد جلسة محددة (غير مدرجة بالأجندة)
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setNoHearingSpecified(false);
-                          }}
-                          className="text-[11px] text-amber-700 hover:text-amber-800 font-bold underline cursor-pointer"
-                        >
-                          تحديد تاريخ
-                        </button>
-                      </div>
-                    ) : (
-                      <input
-                        type="date"
-                        value={nextHearing}
-                        onChange={(e) => {
-                          setNextHearing(e.target.value);
-                          if (e.target.value) {
-                            setNoHearingSpecified(false);
-                          }
-                        }}
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:bg-white focus:border-amber-500 transition-colors"
-                      />
-                    )}
-                  </div>
-                  <FormField label="ساعة انعقاد الجلسة" isMono>
-                    <input
-                      type="time"
-                      value={nextHearingTime}
-                      disabled={noHearingSpecified}
-                      onChange={(e) => setNextHearingTime(e.target.value)}
-                      className={`w-full px-3 py-2 border rounded-xl text-xs font-mono transition-colors ${
-                        noHearingSpecified 
-                          ? 'bg-slate-100/60 border-slate-200 text-slate-400 cursor-not-allowed' 
-                          : 'bg-slate-50 border-slate-200 text-slate-800 focus:bg-white'
-                      }`}
-                    />
-                  </FormField>
-                  <FormField label="حالة رول الجلسة والدعوى">
-                    <input
-                      type="text"
-                      placeholder="مثال: مؤجلة للاطلاع..."
-                      value={status}
-                      onChange={(e) => setStatus(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white"
-                    />
-                  </FormField>
-                  <FormField label="رقم الحصر (إن وجد)">
-                    <input
-                      type="text"
-                      placeholder="حصر التنفيذ أو الحصر العقاري"
-                      value={enforcementNo}
-                      onChange={(e) => setEnforcementNo(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white"
-                    />
-                  </FormField>
-                </FormGrid>
-
+              {/* General Case Subject, Notes & Prosecution (بدون قسم متابعة أو جلسات خارج المراحل) */}
+              <FormCard title="موضوع الدعوى والملاحظات والنيابة العامة" icon={FileText}>
                 {(caseType === 'جنايات' || caseType === 'جنائي' || caseType === 'جنح' || caseType === 'جنح طفل' || caseType === 'جنح مرور' || caseType === 'جنح مالية' || caseType === 'جنح اقتصادية' || caseType === 'تهرب ضريبي' || caseType === 'ادارى' || caseType === 'مخالفات') && (
-                  <div className="mt-4">
+                  <div className="mb-4">
                     <FormField label="اسم السيد عضو النيابة العامة المسؤول عن المحضر">
                       <input
                         type="text"
@@ -4425,7 +4746,7 @@ export default function CasesPanel({
                   </div>
                 )}
 
-                <div className="mt-4 space-y-4">
+                <div className="space-y-4">
                   <FormField label="موضوع الدعوى">
                     <textarea
                       placeholder="اكتب موضوع القضية أو عريضة الدعوى بشكل واضح هنا..."
@@ -5075,6 +5396,17 @@ export default function CasesPanel({
                                         👁️ عرض المستند
                                       </button>
                                     )}
+                                    <WhatsAppShareButton
+                                      file={f}
+                                      caseInfo={{
+                                        caseNumber: editingCase?.caseNumberFirstInstance,
+                                        caseYear: editingCase?.caseYearFirstInstance,
+                                        clientName: editingCase?.clientName,
+                                        court: editingCase?.courtFirstInstance,
+                                        subject: editingCase?.subject
+                                      }}
+                                      size="xs"
+                                    />
                                     <button
                                       type="button"
                                       onClick={() => handleRemoveFile(f.id)}

@@ -25,6 +25,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { CaseFile, Case } from '../types';
 import { getFileFromIndexedDB, getProxiedUrl, downloadFile } from '../utils/fileStorage';
 import { useBackHandler } from '../utils/navigationManager';
+import WhatsAppShareButton from './WhatsAppShareButton';
 
 export interface DocumentViewerModalProps {
   file: CaseFile | {
@@ -436,6 +437,20 @@ export default function DocumentViewerModal({ file, onClose, caseData }: Documen
                   <span className="hidden sm:inline">Proxy مباشر</span>
                 </a>
               )}
+
+              {/* WhatsApp Share Button */}
+              <WhatsAppShareButton
+                file={file}
+                caseInfo={{
+                  caseNumber: caseData?.caseNumberFirstInstance,
+                  caseYear: caseData?.caseYearFirstInstance,
+                  clientName: caseData?.clientName,
+                  court: caseData?.courtFirstInstance,
+                  subject: caseData?.subject
+                }}
+                className="p-2 sm:px-3 sm:py-1.5"
+                size="sm"
+              />
 
               {/* Print Button */}
               <button

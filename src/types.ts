@@ -362,12 +362,27 @@ export interface Case {
   courtFirstInstance?: string;
   venueFirstInstance?: string;
   circuitFirstInstance?: string;
+  nextHearingDate1st?: string;
+  nextHearingTime1st?: string;
+  noHearingSpecified1st?: boolean;
+  status1st?: string;
+  enforcementNo1st?: string;
   courtSecondInstance?: string;
   venueSecondInstance?: string;
   circuitSecondInstance?: string;
+  nextHearingDate2nd?: string;
+  nextHearingTime2nd?: string;
+  noHearingSpecified2nd?: boolean;
+  status2nd?: string;
+  enforcementNo2nd?: string;
   courtCassation?: string;
   venueCassation?: string;
   circuitCassation?: string;
+  nextHearingDateCassation?: string;
+  nextHearingTimeCassation?: string;
+  noHearingSpecifiedCassation?: boolean;
+  statusCassation?: string;
+  enforcementNoCassation?: string;
   type: CaseType;
   court: string;
   circuit: string; // الدائرة

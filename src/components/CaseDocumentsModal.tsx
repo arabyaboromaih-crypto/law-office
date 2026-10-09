@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { Case, CaseFile, User as AppUser } from '../types';
 import { uploadToR2, saveFileToIndexedDB, getFileFromIndexedDB, getProxiedUrl, downloadFile } from '../utils/fileStorage';
+import WhatsAppShareButton from './WhatsAppShareButton';
 
 export const DOCUMENT_TYPE_OPTIONS = [
   'صحيفة الدعوى',
@@ -817,6 +818,17 @@ export default function CaseDocumentsModal({
                           <Download className="w-3.5 h-3.5" />
                           <span>تحميل</span>
                         </button>
+
+                        <WhatsAppShareButton
+                          file={file}
+                          caseInfo={{
+                            caseNumber: caseData?.caseNumberFirstInstance,
+                            caseYear: caseData?.caseYearFirstInstance,
+                            clientName: caseData?.clientName,
+                            court: caseData?.courtFirstInstance,
+                            subject: caseData?.subject
+                          }}
+                        />
                       </div>
 
                       {/* Delete button or confirmation */}
