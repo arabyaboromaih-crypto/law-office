@@ -6,18 +6,27 @@ import {
   ArrowRight, ShieldCheck, AlertCircle, Sparkles, Filter, Download,
   Wallet, RefreshCw, Eye, RotateCcw
 } from 'lucide-react';
-import { ReProperty, ReOwner, RePayout, ReRentDue, User as AuthUser } from '../../types';
+import { ReProperty, ReOwner, RePayout, ReRentDue, RePropertyExpense, ReOwnerAdvance, User as AuthUser } from '../../types';
 
 interface PropertyPayoutReceiptsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  property: { id: string; name: string; ownerId?: string; ownerName?: string } | null;
-  owner: { id: string; name: string; phone?: string; bankAccount?: string } | null;
+  property?: { id: string; name: string; ownerId?: string; ownerName?: string } | null;
+  owner?: { id: string; name: string; phone?: string; bankAccount?: string } | null;
+  propertyId?: string;
+  propertyName?: string;
+  ownerId?: string;
+  ownerName?: string;
   payouts: RePayout[];
   dues?: ReRentDue[];
+  expenses?: RePropertyExpense[];
+  advances?: ReOwnerAdvance[];
   currentUser?: AuthUser;
   onRevertPayout?: (payout: RePayout) => Promise<void>;
+  onDeletePayout?: (payout: RePayout) => Promise<void>;
   isReverting?: boolean;
+  initialMonth?: string;
+  todayISO?: string;
 }
 
 const AR_MONTHS_MAP: Record<string, string> = {
@@ -459,6 +468,38 @@ export function generatePayoutReceiptVoucherHTML({
         </tr>
       </tbody>
     </table>
+
+    ${payout.includedDues && payout.includedDues.length > 0 ? `
+    <div style="margin-top: 15px; margin-bottom: 15px;">
+      <div style="font-size: 11px; font-weight: 800; color: #b45309; margin-bottom: 6px;">
+        تفصيل الإيجارات المشمولة في سند الصرف (${payout.includedDues.length} استحقاق/مستأجر):
+      </div>
+      <table class="details-table" style="margin-bottom: 0;">
+        <thead>
+          <tr style="background: #1e293b;">
+            <th style="text-align: right; width: 30%;">اسم المستأجر</th>
+            <th style="text-align: center; width: 15%;">الوحدة</th>
+            <th style="text-align: center; width: 15%;">الشهر</th>
+            <th style="text-align: center; width: 20%;">قيمة الإيجار</th>
+            <th style="text-align: center; width: 20%;">صافي المستحق للمالك</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${payout.includedDues.map((d: any) => `
+            <tr>
+              <td style="font-weight: 700;">${d.tenantName || 'مستأجر'}</td>
+              <td style="text-align: center; font-family: monospace;">${d.unitNumber || '—'}</td>
+              <td style="text-align: center; font-family: monospace;">${formatMonthYearAr(d.forMonthYear)}</td>
+              <td style="text-align: center; font-family: monospace;">${(d.rentAmount || 0).toLocaleString('ar-EG')} ج.م</td>
+              <td style="text-align: center; font-family: monospace; font-weight: 800; color: #059669;">
+                ${(d.netOwnerAmount || d.rentAmount || 0).toLocaleString('ar-EG')} ج.م
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+    ` : ''}
     
     <div class="signatures">
       <div class="sig-box">
@@ -491,26 +532,51 @@ export const PropertyPayoutReceiptsModal: React.FC<PropertyPayoutReceiptsModalPr
   onClose,
   property,
   owner,
+  propertyId,
+  propertyName,
+  ownerId,
+  ownerName,
   payouts,
   dues = [],
   currentUser,
   onRevertPayout,
   isReverting = false,
+  initialMonth = 'all'
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterMonth, setFilterMonth] = useState('all');
+  const [filterMonth, setFilterMonth] = useState(initialMonth);
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'reverted'>('all');
+
+  const resolvedProperty = useMemo(() => {
+    if (property) return property;
+    if (propertyId) return { id: propertyId, name: propertyName || 'عقار' };
+    return null;
+  }, [property, propertyId, propertyName]);
+
+  const resolvedOwner = useMemo(() => {
+    if (owner) return owner;
+    if (ownerId) return { id: ownerId, name: ownerName || 'مالك' };
+    return null;
+  }, [owner, ownerId, ownerName]);
+
+  React.useEffect(() => {
+    if (initialMonth) {
+      setFilterMonth(initialMonth);
+    }
+  }, [initialMonth, isOpen]);
 
   // Filter payouts strictly linked to this property (and owner)
   const propertyPayouts = useMemo(() => {
-    if (!property?.id) return [];
+    const propId = resolvedProperty?.id;
+    const ownId = resolvedOwner?.id;
+    if (!propId) return [];
     return payouts.filter(p => {
       if (!p) return false;
-      const matchProp = p.propertyId === property.id;
-      const matchOwner = !owner?.id || p.ownerId === owner.id || !p.ownerId;
+      const matchProp = p.propertyId === propId;
+      const matchOwner = !ownId || p.ownerId === ownId || !p.ownerId;
       return matchProp && matchOwner;
     });
-  }, [payouts, property?.id, owner?.id]);
+  }, [payouts, resolvedProperty?.id, resolvedOwner?.id]);
 
   // Apply in-modal search & filters
   const filteredPayouts = useMemo(() => {
@@ -576,8 +642,8 @@ export const PropertyPayoutReceiptsModal: React.FC<PropertyPayoutReceiptsModalPr
     }
     const htmlContent = generatePayoutReceiptVoucherHTML({
       payout,
-      property,
-      owner,
+      property: resolvedProperty,
+      owner: resolvedOwner,
       currentUser
     });
     printWindow.document.open();
@@ -621,7 +687,7 @@ export const PropertyPayoutReceiptsModal: React.FC<PropertyPayoutReceiptsModalPr
       <html dir="rtl" lang="ar">
       <head>
         <meta charset="UTF-8">
-        <title>كشف سندات الصرف - عقار ${property?.name || ''}</title>
+        <title>كشف سندات الصرف - عقار ${resolvedProperty?.name || ''}</title>
         <style>
           @page { size: A4 portrait; margin: 12mm; }
           body {
@@ -704,8 +770,8 @@ export const PropertyPayoutReceiptsModal: React.FC<PropertyPayoutReceiptsModalPr
         </div>
 
         <div class="info-grid">
-          <div><strong>اسم العقار:</strong> ${property?.name || '—'}</div>
-          <div><strong>اسم المالك:</strong> ${owner?.name || property?.ownerName || '—'}</div>
+          <div><strong>اسم العقار:</strong> ${resolvedProperty?.name || '—'}</div>
+          <div><strong>اسم المالك:</strong> ${resolvedOwner?.name || resolvedProperty?.ownerName || '—'}</div>
           <div><strong>تاريخ استخراج التقرير:</strong> ${new Date().toLocaleDateString('ar-EG')}</div>
           <div><strong>إجمالي السندات:</strong> ${propertyPayouts.length} سند</div>
           <div><strong>إجمالي المنصرف المعتمد:</strong> ${totalDisbursedActive.toLocaleString('ar-EG')} ج.م</div>
@@ -738,7 +804,7 @@ export const PropertyPayoutReceiptsModal: React.FC<PropertyPayoutReceiptsModalPr
           <div>
             <div>توقيع المالك المستلم</div>
             <div class="sig-line"></div>
-            <div>${owner?.name || property?.ownerName || ''}</div>
+            <div>${resolvedOwner?.name || resolvedProperty?.ownerName || ''}</div>
           </div>
           <div>
             <div>المحاسب المعتمد</div>
@@ -786,14 +852,14 @@ export const PropertyPayoutReceiptsModal: React.FC<PropertyPayoutReceiptsModalPr
               <div>
                 <div className="flex items-center gap-2">
                   <h2 className="text-base sm:text-lg font-black text-[#F8F9FB]">
-                    سندات الصرف المسجلة لعقار: <span className="text-[#D4A84F]">{property?.name}</span>
+                    سندات الصرف المسجلة لعقار: <span className="text-[#D4A84F]">{resolvedProperty?.name}</span>
                   </h2>
                   <span className="px-2.5 py-0.5 rounded-full bg-[#D4A84F]/15 border border-[#D4A84F]/30 text-[#D4A84F] text-[11px] font-mono font-black">
                     {propertyPayouts.length} سند
                   </span>
                 </div>
                 <p className="text-xs text-[#9EA7B8] font-bold mt-0.5 flex items-center gap-2">
-                  <span>المالك: <strong className="text-amber-300">{owner?.name || property?.ownerName || 'مالك العقار'}</strong></span>
+                  <span>المالك: <strong className="text-amber-300">{resolvedOwner?.name || resolvedProperty?.ownerName || 'مالك العقار'}</strong></span>
                   <span>•</span>
                   <span>ربط فوري وتلقائي مع كشف حساب المالك وملف PDF</span>
                 </p>

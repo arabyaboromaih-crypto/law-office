@@ -238,7 +238,13 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
+        "receiptNumber": { "type": "string" },
         "ownerId": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "propertyId": { "type": "string" },
+        "propertyName": { "type": "string" },
+        "forMonthYear": { "type": "string" },
+        "monthNameAr": { "type": "string" },
         "totalCollected": { "type": "number" },
         "commissionDeducted": { "type": "number" },
         "expensesDeducted": { "type": "number" },

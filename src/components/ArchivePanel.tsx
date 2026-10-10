@@ -20,6 +20,7 @@ import { getEffectiveStageInfo } from '../utils/stageUtils';
 import { useBackHandler } from '../utils/navigationManager';
 import { ref, uploadBytes, getDownloadURL, deleteObject, uploadBytesResumable } from "firebase/storage";
 import { storage } from "../services/firebase";
+import WhatsAppShareButton from './WhatsAppShareButton';
 
 function uploadFile(
   storageRef: any,
@@ -1796,6 +1797,17 @@ export default function ArchivePanel({
                             >
                               الاطلاع على المستند
                             </button>
+                            <WhatsAppShareButton
+                              file={f}
+                              caseInfo={{
+                                caseNumber: selectedCaseProfile?.caseNumberFirstInstance,
+                                caseYear: selectedCaseProfile?.caseYearFirstInstance,
+                                clientName: selectedCaseProfile?.clientName,
+                                court: selectedCaseProfile?.courtFirstInstance,
+                                subject: selectedCaseProfile?.subject
+                              }}
+                              size="xs"
+                            />
                             {onUpdateCase && (
                               <button
                                 onClick={() => {

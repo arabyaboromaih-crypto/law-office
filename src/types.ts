@@ -758,11 +758,14 @@ export interface ReCollectionReceipt {
 export interface RePayout {
   id: string;
   ownerId: string;
+  ownerName?: string;
   propertyId?: string;
+  propertyName?: string;
   dueId?: string;
   tenantId?: string;
   receiptNumber?: string;
   forMonthYear?: string;
+  monthNameAr?: string;
   totalCollected: number;
   commissionDeducted: number;
   expensesDeducted: number;
@@ -777,6 +780,16 @@ export interface RePayout {
   isCancelled?: boolean;
   signedByOwner: boolean;
   signatureDate?: string;
+  includedDues?: {
+    dueId: string;
+    tenantId?: string;
+    tenantName?: string;
+    unitNumber?: string;
+    rentAmount: number;
+    commissionAmount?: number;
+    netOwnerAmount?: number;
+    forMonthYear?: string;
+  }[];
   createdAt: string;
 }
 

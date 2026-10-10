@@ -282,7 +282,16 @@ ${JSON.stringify(caseData, null, 2)}
         if (clean.endsWith(".png")) return "image/png";
         if (clean.endsWith(".jpg") || clean.endsWith(".jpeg")) return "image/jpeg";
         if (clean.endsWith(".webp")) return "image/webp";
+        if (clean.endsWith(".gif")) return "image/gif";
         if (clean.endsWith(".svg")) return "image/svg+xml";
+        if (clean.endsWith(".doc")) return "application/msword";
+        if (clean.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        if (clean.endsWith(".xls")) return "application/vnd.ms-excel";
+        if (clean.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        if (clean.endsWith(".ppt")) return "application/vnd.ms-powerpoint";
+        if (clean.endsWith(".pptx")) return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+        if (clean.endsWith(".zip")) return "application/zip";
+        if (clean.endsWith(".rar")) return "application/x-rar-compressed";
         if (clean.endsWith(".txt")) return "text/plain; charset=utf-8";
         return null;
       };
@@ -303,6 +312,8 @@ ${JSON.stringify(caseData, null, 2)}
         }
         res.setHeader("Content-Disposition", "inline");
         res.setHeader("Access-Control-Allow-Origin", "*");
+        res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+        res.setHeader("Access-Control-Allow-Headers", "*");
         res.setHeader("Cache-Control", "public, max-age=86400");
 
         const arrayBuffer = await response.arrayBuffer();
@@ -337,15 +348,17 @@ ${JSON.stringify(caseData, null, 2)}
           const disposition = isDownload ? `attachment; filename="${encodeURIComponent(queryFilename)}"` : "inline";
           res.setHeader("Content-Disposition", disposition);
           res.setHeader("Access-Control-Allow-Origin", "*");
+          res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+          res.setHeader("Access-Control-Allow-Headers", "*");
           res.setHeader("Cache-Control", "public, max-age=86400");
 
           const stream = r2Response.Body as any;
           if (stream) {
-            if (typeof stream.pipe === "function") {
-              return stream.pipe(res);
-            } else if (typeof stream.transformToByteArray === "function") {
+            if (typeof stream.transformToByteArray === "function") {
               const bytes = await stream.transformToByteArray();
               return res.send(Buffer.from(bytes));
+            } else if (typeof stream.pipe === "function") {
+              return stream.pipe(res);
             }
           }
           return res.status(404).send("File body is empty or unavailable");
@@ -358,6 +371,8 @@ ${JSON.stringify(caseData, null, 2)}
               res.setHeader("Content-Type", detectedType);
               res.setHeader("Content-Disposition", "inline");
               res.setHeader("Access-Control-Allow-Origin", "*");
+              res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+              res.setHeader("Access-Control-Allow-Headers", "*");
               res.setHeader("Cache-Control", "public, max-age=86400");
               const ab = await fallbackResp.arrayBuffer();
               return res.send(Buffer.from(ab));

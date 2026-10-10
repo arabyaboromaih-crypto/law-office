@@ -31,11 +31,14 @@ import {
   getSectionCommissionForPropertyMonth, calculatePropertyStatementsData, 
   calculateOwnerStatementsData, isTenantMonthSuspended, getMatchingCollectionReceipts, 
   isAdvanceDeductedFromEntitlement, getAdvanceDeductedAmount, 
-  getAdvanceDeductedFromEntitlementAmount, getApplicableRentAdjustment, formatMonthYearAr 
+  getAdvanceDeductedFromEntitlementAmount, getApplicableRentAdjustment, formatMonthYearAr,
+  MonthlyEntitlementRow
 } from './RealEstateData';
 import SearchableTenantDropdown from './SearchableTenantDropdown';
 import TenantCollectionReceiptsModal from './TenantCollectionReceiptsModal';
 import { PropertyPayoutReceiptsModal } from './PropertyPayoutReceiptsModal';
+import { SinglePayoutVoucherModal } from './SinglePayoutVoucherModal';
+import { MonthlyPayoutModal } from './MonthlyPayoutModal';
 import { AdvanceDeductionModal, getDeductionMethodBadge, handlePrintAdvanceVoucher } from './AdvanceDeductionModal';
 import { AdvanceDeductionReceiptsModal } from './AdvanceDeductionReceiptsModal';
 import RevertCollectionModal from './RevertCollectionModal';
@@ -275,6 +278,27 @@ export default function RealEstateFinancials({
       const next = new Set(prev);
       if (next.has(propId)) next.delete(propId);
       else next.add(propId);
+      return next;
+    });
+  };
+
+  // Owner Statements Monthly Entitlements Independent View States
+  const [ownerStatementSubView, setOwnerStatementSubView] = useState<'monthly_entitlements' | 'property_aggregated'>('monthly_entitlements');
+  const [expandedMonthlyRowKeys, setExpandedMonthlyRowKeys] = useState<Set<string>>(new Set());
+  const [monthlyPayoutModalRow, setMonthlyPayoutModalRow] = useState<MonthlyEntitlementRow | null>(null);
+  const [isSavingMonthlyPayout, setIsSavingMonthlyPayout] = useState<boolean>(false);
+  const [singleVoucherModalData, setSingleVoucherModalData] = useState<{
+    payouts: RePayout[];
+    selectedPayoutId?: string;
+    property?: { id: string; name: string };
+    owner?: { id: string; name: string; phone?: string; bankAccount?: string };
+  } | null>(null);
+
+  const toggleMonthlyRowExpand = (key: string) => {
+    setExpandedMonthlyRowKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
@@ -1878,6 +1902,214 @@ export default function RealEstateFinancials({
     }
   };
 
+  const handleOpenMonthlyPayout = (row: MonthlyEntitlementRow) => {
+    if (row.payoutStatus === 'paid_out' || row.remainingBalance <= 0) {
+      alert('تم صرف مستحقات هذا الشهر بالكامل مسبقاً. يمكنك الاطلاع على سند الصرف أو طباعته من زر «سند الصرف».');
+      return;
+    }
+    setMonthlyPayoutModalRow(row);
+  };
+
+  const handleOpenMonthlyVoucher = (row: MonthlyEntitlementRow) => {
+    const propObj = properties.find(p => p.id === row.propertyId);
+    const ownerObj = owners.find(o => o.id === row.ownerId || o.id === propObj?.ownerId);
+
+    const matchingPayouts = payouts.filter(p => {
+      if (!p || p.status === 'reverted' || p.isCancelled) return false;
+      const isProp = p.propertyId === row.propertyId;
+      const isOwner = !p.ownerId || p.ownerId === row.ownerId;
+      const pMonth = p.forMonthYear || (p.payoutDate ? p.payoutDate.slice(0, 7) : '');
+      const isMonth = pMonth === row.monthKey;
+      const isDueMatched = row.dues.some(d => d.payoutReceiptNumber && d.payoutReceiptNumber === p.receiptNumber);
+      return isProp && isOwner && (isMonth || isDueMatched);
+    });
+
+    if (matchingPayouts.length > 0) {
+      setSingleVoucherModalData({
+        payouts: matchingPayouts,
+        selectedPayoutId: matchingPayouts[0].id,
+        property: propObj ? { id: propObj.id, name: propObj.name } : { id: row.propertyId, name: row.propertyName },
+        owner: ownerObj ? { id: ownerObj.id, name: ownerObj.name, phone: ownerObj.phone, bankAccount: ownerObj.bankAccount } : { id: row.ownerId, name: row.ownerName }
+      });
+    } else {
+      const duesWithReceipt = row.dues.filter(d => d.payoutReceiptNumber);
+      if (duesWithReceipt.length > 0) {
+        const mockPayout: RePayout = {
+          id: `PAY-${row.monthKey}-${row.propertyId.slice(-4)}`,
+          receiptNumber: duesWithReceipt[0].payoutReceiptNumber || `PAY-${row.monthKey}`,
+          ownerId: row.ownerId,
+          ownerName: row.ownerName,
+          propertyId: row.propertyId,
+          propertyName: row.propertyName,
+          forMonthYear: row.monthKey,
+          monthNameAr: row.monthNameAr,
+          totalCollected: row.collectedSum || row.rentSum,
+          commissionDeducted: row.commissionSum,
+          expensesDeducted: row.totalDeductionsSum,
+          netAmountPaid: row.disbursedSum || row.netOwnerSum,
+          payoutDate: duesWithReceipt[0].payoutDate || todayISO,
+          paymentMethod: (duesWithReceipt[0] as any).payoutMethod || 'تحويل بنكي',
+          bankTransactionRef: (duesWithReceipt[0] as any).payoutRefNo || '',
+          notes: (duesWithReceipt[0] as any).payoutNotes || `صرف إيجار شهر ${row.monthNameAr} لعقار ${row.propertyName}`,
+          status: 'payout_completed',
+          isCancelled: false,
+          signedByOwner: true,
+          signatureDate: duesWithReceipt[0].payoutDate || todayISO,
+          createdBy: (duesWithReceipt[0] as any).payoutRecordedBy || currentUser.fullName || 'الإدارة المالية',
+          createdAt: duesWithReceipt[0].payoutDate || new Date().toISOString(),
+          includedDues: row.dues.map(d => ({
+            dueId: d.id,
+            tenantId: d.tenantId,
+            tenantName: d.tenantName,
+            unitNumber: d.unitNumber,
+            rentAmount: d.rentAmount,
+            netOwnerAmount: d.netOwnerAmount || d.rentAmount,
+            forMonthYear: row.monthKey
+          }))
+        };
+        setSingleVoucherModalData({
+          payouts: [mockPayout],
+          property: propObj ? { id: propObj.id, name: propObj.name } : { id: row.propertyId, name: row.propertyName },
+          owner: ownerObj ? { id: ownerObj.id, name: ownerObj.name, phone: ownerObj.phone, bankAccount: ownerObj.bankAccount } : { id: row.ownerId, name: row.ownerName }
+        });
+      } else {
+        alert(`لم يتم تسجيل سند صرف لهذا الشهر (${row.monthNameAr}) لعقار (${row.propertyName}) حتى الآن.\n\nيمكنك الضغط على زر «صرف الإيجار» لتنفيذ الصرف وإصدار السند فوراً.`);
+      }
+    }
+  };
+
+  const handleConfirmMonthlyPayout = async ({
+    row,
+    payoutAmount,
+    payoutDate,
+    paymentMethod,
+    bankTransactionRef,
+    notes
+  }: {
+    row: MonthlyEntitlementRow;
+    payoutAmount: number;
+    payoutDate: string;
+    paymentMethod: string;
+    bankTransactionRef: string;
+    notes: string;
+  }) => {
+    if (isSavingMonthlyPayout) return;
+
+    const targetMonth = row.monthKey;
+    const targetPropId = row.propertyId;
+    const targetOwnerId = row.ownerId;
+
+    const pendingDues = validDues.filter(d => {
+      if (!d) return false;
+      const isProp = d.propertyId === targetPropId;
+      const propObj = properties.find(p => p.id === d.propertyId);
+      const isOwner = (d.ownerId === targetOwnerId) || (propObj?.ownerId === targetOwnerId);
+      const isMonth = d.forMonthYear === targetMonth;
+      const isNotPaid = getDuePayoutStatus(d) !== 'paid_out';
+      return isProp && isOwner && isMonth && isNotPaid;
+    });
+
+    if (pendingDues.length === 0 && row.paidOutCount > 0) {
+      alert('تم صرف جميع إيجارات هذا الشهر للمالك مسبقاً.');
+      setMonthlyPayoutModalRow(null);
+      return;
+    }
+
+    setIsSavingMonthlyPayout(true);
+    try {
+      const receiptNumber = `PAY-${Date.now().toString().slice(-6)}`;
+      const propObj = properties.find(p => p.id === targetPropId);
+      const ownerObj = owners.find(o => o.id === targetOwnerId || o.id === propObj?.ownerId);
+
+      const totalDuesRent = pendingDues.reduce((s, d) => s + (d.rentAmount || 0), 0);
+
+      const includedDuesData = pendingDues.map(d => {
+        const dueComm = totalDuesRent > 0
+          ? Math.round(((d.rentAmount || 0) / totalDuesRent) * (row.commissionSum || 0))
+          : (d.commissionAmount || 0);
+        const dueNet = Math.max(0, (d.rentAmount || 0) - dueComm);
+        return {
+          dueId: d.id,
+          tenantId: d.tenantId,
+          tenantName: d.tenantName || 'مستأجر',
+          unitNumber: d.unitNumber || '—',
+          rentAmount: d.rentAmount || 0,
+          commissionAmount: dueComm,
+          netOwnerAmount: dueNet,
+          forMonthYear: targetMonth
+        };
+      });
+
+      const newPayoutRecord: Omit<RePayout, 'id'> = {
+        receiptNumber,
+        ownerId: targetOwnerId,
+        ownerName: row.ownerName || ownerObj?.name || 'المالك',
+        propertyId: targetPropId,
+        propertyName: row.propertyName || propObj?.name || 'العقار',
+        forMonthYear: targetMonth,
+        monthNameAr: row.monthNameAr,
+        totalCollected: row.collectedSum || totalDuesRent,
+        commissionDeducted: row.commissionSum || 0,
+        expensesDeducted: row.totalDeductionsSum || 0,
+        netAmountPaid: payoutAmount,
+        payoutDate,
+        paymentMethod: paymentMethod as any,
+        bankTransactionRef,
+        notes: notes || `صرف مستحقات إيجار شهر ${row.monthNameAr} لعقار ${row.propertyName} للمالك ${row.ownerName}`,
+        status: 'payout_completed',
+        isCancelled: false,
+        signedByOwner: true,
+        signatureDate: payoutDate,
+        createdBy: currentUser.fullName || currentUser.username,
+        createdAt: new Date().toISOString(),
+        includedDues: includedDuesData
+      };
+
+      const docRef = await addFirestoreDoc('re_payouts', newPayoutRecord);
+      const savedPayout: RePayout = {
+        ...newPayoutRecord,
+        id: docRef?.id || receiptNumber
+      };
+
+      for (const due of pendingDues) {
+        await updateFirestoreDoc('re_dues', due.id, {
+          status: 'paid_out',
+          payoutStatus: 'paid_out',
+          payoutDate,
+          payoutMethod: paymentMethod,
+          payoutRefNo: bankTransactionRef,
+          payoutNotes: notes,
+          payoutReceiptNumber: receiptNumber,
+          payoutRecordedBy: currentUser.fullName || currentUser.username
+        });
+      }
+
+      await addFirestoreDoc('re_logs', {
+        type: 'payout',
+        action: `صرف إيجار شهر ${row.monthNameAr} (سند صرف)`,
+        details: `تم إصدار سند صرف رقم ${receiptNumber} بمبلغ ${payoutAmount.toLocaleString('ar-EG')} ج.م بطريقة (${paymentMethod}) لعقار ${row.propertyName} للمالك ${row.ownerName} عن شهر ${row.monthNameAr}.`,
+        timestamp: new Date().toISOString(),
+        user: currentUser.fullName || currentUser.username
+      });
+
+      setMonthlyPayoutModalRow(null);
+
+      setSingleVoucherModalData({
+        payouts: [savedPayout],
+        selectedPayoutId: savedPayout.id,
+        property: propObj ? { id: propObj.id, name: propObj.name } : { id: targetPropId, name: row.propertyName },
+        owner: ownerObj ? { id: ownerObj.id, name: ownerObj.name, phone: ownerObj.phone, bankAccount: ownerObj.bankAccount } : { id: targetOwnerId, name: row.ownerName }
+      });
+
+      alert(`✅ تم تنفيذ الصرف بنجاح وتسجيل سند الصرف برقم (${receiptNumber}) بمبلغ (${payoutAmount.toLocaleString('ar-EG')} ج.م) في قاعدة البيانات.`);
+    } catch (err: any) {
+      console.error('Error in monthly payout execution:', err);
+      alert(`حدث خطأ أثناء حفظ سند الصرف: ${err?.message || err}`);
+    } finally {
+      setIsSavingMonthlyPayout(false);
+    }
+  };
+
   const handleRevertPropertyOwnerPayout = async (group: {
     propertyId: string;
     propertyName: string;
@@ -3114,6 +3346,8 @@ export default function RealEstateFinancials({
   useBackHandler(isReportModalOpen, () => setIsReportModalOpen(false));
   useBackHandler(!!propertyTenantsModalGroup, () => setPropertyTenantsModalGroup(null));
   useBackHandler(!!ownerPayoutModalGroup, () => setOwnerPayoutModalGroup(null));
+  useBackHandler(!!monthlyPayoutModalRow, () => setMonthlyPayoutModalRow(null));
+  useBackHandler(!!singleVoucherModalData, () => setSingleVoucherModalData(null));
   useBackHandler(currentTab === 'tenant_statements' && selectedTenantId !== 'all', () => setSelectedTenantId('all'));
 
   const handleOpenReportPreview = (type?: ReportType) => {
@@ -6440,6 +6674,7 @@ export default function RealEstateFinancials({
               finalNetSettlement,
               finalRemainingBalance,
               allOwnerPayouts,
+              monthlyEntitlements,
             } = calculateOwnerStatementsData({
               dues: validDues,
               collections: collections || [],
@@ -6504,8 +6739,290 @@ export default function RealEstateFinancials({
                   </div>
                 )}
 
-                {/* Statement Table - Grouped per Property */}
-                <div className="bg-[#132238]/60 backdrop-blur-md rounded-2xl border border-[#D4A84F]/15 overflow-hidden shadow-2xl">
+                {/* View Switcher: استحقاقات الصرف الشهرية (نظام شهري مستقل) vs كشف الحساب التجميعي لكل عقار */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-[#132238]/90 p-3 rounded-2xl border border-[#D4A84F]/30 shadow-xl">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-[#D4A84F]" />
+                    <span className="text-xs font-black text-[#F8F9FB]">نظام عرض قسم استحقاقات الصرف:</span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-[#08111F]/90 p-1 rounded-xl border border-[#D4A84F]/20 w-full sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={() => setOwnerStatementSubView('monthly_entitlements')}
+                      className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                        ownerStatementSubView === 'monthly_entitlements'
+                          ? 'bg-gradient-to-r from-[#D4A84F] to-[#C3973E] text-slate-950 font-black shadow-md'
+                          : 'text-[#9EA7B8] hover:text-[#F8F9FB]'
+                      }`}
+                    >
+                      <Calendar className="w-3.5 h-3.5" />
+                      <span>1- استحقاقات الصرف الشهرية (نظام شهري مستقل)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOwnerStatementSubView('property_aggregated')}
+                      className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                        ownerStatementSubView === 'property_aggregated'
+                          ? 'bg-[#D4A84F] text-slate-950 font-black shadow-md'
+                          : 'text-[#9EA7B8] hover:text-[#F8F9FB]'
+                      }`}
+                    >
+                      <Building2 className="w-3.5 h-3.5" />
+                      <span>2- كشف الحساب التجميعي لكل عقار</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* VIEW A: استحقاقات الصرف الشهرية المستقلة (MONTHLY ENTITLEMENTS TABLE) */}
+                {ownerStatementSubView === 'monthly_entitlements' ? (
+                  <div className="bg-[#132238]/60 backdrop-blur-md rounded-2xl border border-[#D4A84F]/15 overflow-hidden shadow-2xl space-y-0">
+                    <div className="p-4 border-b border-[#D4A84F]/15 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-[#D4A84F]" />
+                        <h3 className="text-xs sm:text-sm font-black text-[#F8F9FB]">
+                          استحقاقات الصرف الشهرية للملاك ({selectedOwnerId === 'all' ? 'جميع الملاك' : currentOwnerObj?.name}) - {selectedMonthYear === 'all' ? 'جميع الشهور' : selectedMonthYear}
+                        </h3>
+                      </div>
+                      <span className="text-[10px] text-[#9EA7B8] font-mono font-bold">
+                        عدد الشهور المستحقة: {monthlyEntitlements.length} شهر • كل صف يمثل شهراً وعقاراً ومالكاً مستقلاً
+                      </span>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-right text-xs">
+                        <thead>
+                          <tr className="bg-[#08111F]/80 text-[#9EA7B8] text-[11px] font-bold border-b border-[#D4A84F]/10">
+                            <th className="p-3 text-center w-10">#</th>
+                            <th className="p-3">شهر الاستحقاق</th>
+                            <th className="p-3">العقار والمالك</th>
+                            <th className="p-3 text-center">المستأجرون</th>
+                            <th className="p-3">إجمالي إيجار الشهر</th>
+                            <th className="p-3">عمولة المكتب</th>
+                            <th className="p-3 text-rose-400">الخصومات المعتمدة</th>
+                            <th className="p-3 text-[#D4A84F] font-black">قيمة الاستحقاق الصافي</th>
+                            <th className="p-3">المصروف فعلياً</th>
+                            <th className="p-3">الرصيد المتبقي</th>
+                            <th className="p-3 text-center">حالة الصرف</th>
+                            <th className="p-3 text-center font-bold">إجراءات الصرف والسند</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#D4A84F]/10 font-bold">
+                          {monthlyEntitlements.length === 0 ? (
+                            <tr>
+                              <td colSpan={12} className="p-8 text-center text-[#9EA7B8]">
+                                <Clock className="w-8 h-8 text-[#D4A84F]/40 mx-auto mb-2" />
+                                <p className="text-xs font-bold">لا توجد استحقاقات صرف شهرية مطابقة للشروط المختارة.</p>
+                              </td>
+                            </tr>
+                          ) : (
+                            monthlyEntitlements.map((row, idx) => {
+                              const rowKey = `${row.monthKey}_${row.propertyId}_${row.ownerId}`;
+                              const isExpanded = expandedMonthlyRowKeys.has(rowKey);
+
+                              const rowVouchers = (payouts || []).filter(p => {
+                                if (!p || p.status === 'reverted' || p.isCancelled) return false;
+                                const isProp = p.propertyId === row.propertyId;
+                                const isOwner = !p.ownerId || p.ownerId === row.ownerId;
+                                const pMonth = p.forMonthYear || (p.payoutDate ? p.payoutDate.slice(0, 7) : '');
+                                const isMonth = pMonth === row.monthKey;
+                                const isDueMatched = row.dues.some(d => d.payoutReceiptNumber && d.payoutReceiptNumber === p.receiptNumber);
+                                return isProp && isOwner && (isMonth || isDueMatched);
+                              });
+
+                              const isFullyPaid = row.payoutStatus === 'paid_out';
+                              const isPartial = row.payoutStatus === 'partial';
+
+                              let statusBadgeText = 'لم يُصرف ⏳';
+                              let statusBadgeClass = 'bg-rose-500/15 text-rose-300 border-rose-500/30';
+                              if (isFullyPaid) {
+                                statusBadgeText = 'تم الصرف ✅';
+                                statusBadgeClass = 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
+                              } else if (isPartial) {
+                                statusBadgeText = 'صُرف جزئياً ⚠️';
+                                statusBadgeClass = 'bg-amber-500/15 text-amber-300 border-amber-500/30';
+                              }
+
+                              return (
+                                <React.Fragment key={rowKey}>
+                                  <tr className="hover:bg-[#08111F]/60 transition-all bg-[#132238]/40">
+                                    <td className="p-3 text-center font-mono text-[#9EA7B8]">{idx + 1}</td>
+                                    <td className="p-3 font-mono font-black text-[#F8F9FB]">
+                                      <div className="flex items-center gap-1.5">
+                                        <Calendar className="w-3.5 h-3.5 text-[#D4A84F]" />
+                                        <span>{row.monthNameAr}</span>
+                                      </div>
+                                      <span className="text-[10px] text-[#9EA7B8] font-mono block mt-0.5">{row.monthKey}</span>
+                                    </td>
+                                    <td className="p-3">
+                                      <div className="font-extrabold text-[#F8F9FB] flex items-center gap-1">
+                                        <Building className="w-3.5 h-3.5 text-[#D4A84F]" />
+                                        <span>{row.propertyName}</span>
+                                      </div>
+                                      <span className="text-[10px] text-[#D4A84F] block mt-0.5">المالك: {row.ownerName}</span>
+                                    </td>
+                                    <td className="p-3 text-center">
+                                      <span className="px-2 py-0.5 rounded-lg bg-[#08111F] text-[#D4A84F] border border-[#D4A84F]/20 text-[11px] font-mono">
+                                        {row.tenantCount} مستأجر
+                                      </span>
+                                    </td>
+                                    <td className="p-3 font-mono text-[#F8F9FB]">{row.rentSum.toLocaleString('ar-EG')} ج.م</td>
+                                    <td className="p-3 font-mono text-amber-400">{row.commissionSum.toLocaleString('ar-EG')} ج.م</td>
+                                    <td className="p-3 font-mono text-rose-400 font-extrabold">
+                                      {row.totalDeductionsSum > 0 ? `${row.totalDeductionsSum.toLocaleString('ar-EG')} ج.م` : '0 ج.م'}
+                                    </td>
+                                    <td className="p-3 font-mono text-[#D4A84F] font-black">{row.netOwnerSum.toLocaleString('ar-EG')} ج.م</td>
+                                    <td className="p-3 font-mono text-emerald-400">{row.disbursedSum.toLocaleString('ar-EG')} ج.م</td>
+                                    <td className={`p-3 font-mono font-extrabold ${row.remainingBalance > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                      {row.remainingBalance.toLocaleString('ar-EG')} ج.م
+                                    </td>
+                                    <td className="p-3 text-center">
+                                      <span className={`inline-block px-2.5 py-1 rounded-xl text-[11px] font-black border ${statusBadgeClass}`}>
+                                        {statusBadgeText}
+                                      </span>
+                                    </td>
+                                    <td className="p-3 text-center">
+                                      <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                                        {/* زر سند الصرف */}
+                                        <button
+                                          type="button"
+                                          onClick={() => handleOpenMonthlyVoucher(row)}
+                                          className="px-2.5 py-1.5 rounded-xl bg-[#D4A84F]/15 hover:bg-[#D4A84F]/25 text-[#D4A84F] border border-[#D4A84F]/30 text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
+                                          title="عرض وطباعة سند الصرف المسجل فعلياً لهذا الشهر"
+                                        >
+                                          <Receipt className="w-3.5 h-3.5 text-[#D4A84F]" />
+                                          <span>سند الصرف</span>
+                                          {rowVouchers.length > 0 && (
+                                            <span className="px-1.5 py-0.2 rounded-full bg-[#D4A84F] text-slate-950 text-[10px] font-black font-mono">
+                                              {rowVouchers.length}
+                                            </span>
+                                          )}
+                                        </button>
+
+                                        {/* زر صرف الإيجار */}
+                                        {isFullyPaid ? (
+                                          <span 
+                                            className="px-2.5 py-1.5 rounded-xl bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-xs font-bold flex items-center gap-1 select-none cursor-default"
+                                            title="تم صرف مستحقات هذا الشهر بالكامل"
+                                          >
+                                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                            <span>تم الصرف</span>
+                                          </span>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleOpenMonthlyPayout(row)}
+                                            className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs shadow-md hover:shadow-emerald-500/20 border border-emerald-400/30 transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
+                                            title="تنفيذ عملية صرف فعلية لهذا الشهر والعقار والمالك فقط"
+                                          >
+                                            <Wallet className="w-3.5 h-3.5 text-amber-300" />
+                                            <span>{isPartial ? 'صرف المتبقي' : 'صرف الإيجار'}</span>
+                                          </button>
+                                        )}
+
+                                        {/* زر تفاصيل المستأجرين */}
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleMonthlyRowExpand(rowKey)}
+                                          className={`p-1.5 rounded-xl text-xs font-black transition-all flex items-center justify-center cursor-pointer border ${
+                                            isExpanded 
+                                              ? 'bg-[#D4A84F] text-slate-950 border-[#D4A84F] shadow-md' 
+                                              : 'bg-[#08111F] text-[#D4A84F] hover:bg-[#D4A84F]/20 border-[#D4A84F]/30'
+                                          }`}
+                                          title={isExpanded ? 'إخفاء المستأجرين' : 'عرض المستأجرين لهذا الشهر'}
+                                        >
+                                          <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+
+                                  {/* Inline Expanded Tenant Sub-Table for this specific month */}
+                                  {isExpanded && (
+                                    <tr className="bg-[#08111F]/90">
+                                      <td colSpan={12} className="p-3">
+                                        <div className="p-3.5 bg-[#132238]/90 rounded-xl border border-[#D4A84F]/20 space-y-2">
+                                          <div className="flex items-center justify-between pb-1.5 border-b border-[#D4A84F]/15">
+                                            <span className="text-xs font-black text-[#D4A84F] flex items-center gap-1.5">
+                                              <Users className="w-3.5 h-3.5" />
+                                              <span>مستأجرو شهر ({row.monthNameAr}) لعقار: <strong className="text-white">{row.propertyName}</strong></span>
+                                            </span>
+                                            <span className="text-[10px] text-[#9EA7B8] font-mono">
+                                              عدد الاستحقاقات: {row.dues.length}
+                                            </span>
+                                          </div>
+
+                                          <div className="overflow-x-auto rounded-lg border border-[#D4A84F]/15">
+                                            <table className="w-full text-right text-xs">
+                                              <thead>
+                                                <tr className="bg-[#08111F] text-[#9EA7B8] text-[10px] font-bold border-b border-[#D4A84F]/15">
+                                                  <th className="p-2 text-center w-8">#</th>
+                                                  <th className="p-2">المستأجر</th>
+                                                  <th className="p-2 text-center">الوحدة</th>
+                                                  <th className="p-2 text-center">قيمة الإيجار</th>
+                                                  <th className="p-2 text-center">عمولة المستأجر</th>
+                                                  <th className="p-2 text-center">صافي المستحق</th>
+                                                  <th className="p-2 text-center">حالة الصرف</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody className="divide-y divide-white/5 font-bold">
+                                                {row.dues.map((d, dIdx) => {
+                                                  const isPaidDue = getDuePayoutStatus(d) === 'paid_out';
+                                                  const dueComm = row.rentSum > 0 ? Math.round(((d.rentAmount || 0) / row.rentSum) * row.commissionSum) : (d.commissionAmount || 0);
+                                                  const dueNet = Math.max(0, (d.rentAmount || 0) - dueComm);
+                                                  return (
+                                                    <tr key={d.id || dIdx} className="hover:bg-white/5">
+                                                      <td className="p-2 text-center font-mono text-[#9EA7B8] text-[10px]">{dIdx + 1}</td>
+                                                      <td className="p-2 text-white">{d.tenantName || 'مستأجر'}</td>
+                                                      <td className="p-2 text-center font-mono text-amber-300">{d.unitNumber || '—'}</td>
+                                                      <td className="p-2 text-center font-mono">{(d.rentAmount || 0).toLocaleString('ar-EG')} ج.م</td>
+                                                      <td className="p-2 text-center font-mono text-amber-400">{dueComm.toLocaleString('ar-EG')} ج.م</td>
+                                                      <td className="p-2 text-center font-mono text-emerald-400">{dueNet.toLocaleString('ar-EG')} ج.م</td>
+                                                      <td className="p-2 text-center">
+                                                        {isPaidDue ? (
+                                                          <span className="px-2 py-0.5 rounded-full text-[9px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                                                            تم الصرف
+                                                          </span>
+                                                        ) : (
+                                                          <span className="px-2 py-0.5 rounded-full text-[9px] bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                                                            بانتظار الصرف
+                                                          </span>
+                                                        )}
+                                                      </td>
+                                                    </tr>
+                                                  );
+                                                })}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </React.Fragment>
+                              );
+                            })
+                          )}
+
+                          {/* Totals Summary Row for Monthly Entitlements */}
+                          {monthlyEntitlements.length > 0 && (
+                            <tr className="bg-[#08111F] text-[#F8F9FB] font-black border-t-2 border-[#D4A84F]/30 text-xs">
+                              <td colSpan={4} className="p-3 text-left text-[#D4A84F]">إجمالي استحقاقات الشهور المعروضة:</td>
+                              <td className="p-3 font-mono text-[#F8F9FB]">{ownerTotalRentSum.toLocaleString('ar-EG')} ج.م</td>
+                              <td className="p-3 font-mono text-amber-400">{ownerTotalCommissionSum.toLocaleString('ar-EG')} ج.م</td>
+                              <td className="p-3 font-mono text-rose-400 font-extrabold">{totalOwnerDeductions > 0 ? `${totalOwnerDeductions.toLocaleString('ar-EG')} ج.م` : '0 ج.م'}</td>
+                              <td className="p-3 font-mono text-[#D4A84F] text-sm">{ownerTotalNetOwnerSum.toLocaleString('ar-EG')} ج.م</td>
+                              <td className="p-3 font-mono text-emerald-400">{ownerTotalDisbursedSum.toLocaleString('ar-EG')} ج.م</td>
+                              <td className="p-3 font-mono text-amber-400 text-sm font-black">{finalRemainingBalance.toLocaleString('ar-EG')} ج.م</td>
+                              <td colSpan={2} className="p-3 text-center text-[#D4A84F] font-mono">{monthlyEntitlements.length} شهر مسجل</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : (
+                  /* VIEW B: Statement Table - Grouped per Property */
+                  <div className="bg-[#132238]/60 backdrop-blur-md rounded-2xl border border-[#D4A84F]/15 overflow-hidden shadow-2xl">
                   <div className="p-4 border-b border-[#D4A84F]/15 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Users className="w-4 h-4 text-[#D4A84F]" />
@@ -6965,6 +7482,7 @@ export default function RealEstateFinancials({
                     </table>
                   </div>
                 </div>
+                )}
 
                 {/* Deductions Table (Solf & Expenses) */}
                 {(ownerAdvancesDeducted.length > 0 || ownerExpensesDeducted.length > 0) && (
@@ -8856,6 +9374,31 @@ export default function RealEstateFinancials({
           onDeletePayout={onDeletePayout}
           currentUser={currentUser}
           todayISO={todayISO}
+        />
+      )}
+
+      {/* Monthly Payout Execution Modal */}
+      {monthlyPayoutModalRow && (
+        <MonthlyPayoutModal
+          isOpen={!!monthlyPayoutModalRow}
+          onClose={() => setMonthlyPayoutModalRow(null)}
+          row={monthlyPayoutModalRow}
+          onConfirm={handleConfirmMonthlyPayout}
+          isSubmitting={isSavingMonthlyPayout}
+          currentUser={currentUser}
+        />
+      )}
+
+      {/* Single Payout Voucher Modal (عرض وطباعة سند الصرف) */}
+      {singleVoucherModalData && (
+        <SinglePayoutVoucherModal
+          isOpen={!!singleVoucherModalData}
+          onClose={() => setSingleVoucherModalData(null)}
+          payouts={singleVoucherModalData.payouts}
+          selectedPayoutId={singleVoucherModalData.selectedPayoutId}
+          property={singleVoucherModalData.property}
+          owner={singleVoucherModalData.owner}
+          currentUser={currentUser}
         />
       )}
 

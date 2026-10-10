@@ -935,6 +935,31 @@ export interface OwnerStatementsCalculatedData {
   totalOwnerDeductions: number;
   finalNetSettlement: number;
   finalRemainingBalance: number;
+  monthlyEntitlements: MonthlyEntitlementRow[];
+}
+
+export interface MonthlyEntitlementRow {
+  monthKey: string;           // e.g. '2025-05'
+  monthNameAr: string;        // e.g. 'مايو 2025'
+  propertyId: string;
+  propertyName: string;
+  ownerId: string;
+  ownerName: string;
+  tenantCount: number;
+  paidOutCount: number;
+  rentSum: number;            // إجمالي إيجار الشهر
+  collectedSum: number;       // المحصل من المستأجرين
+  commissionSum: number;      // عمولة المكتب
+  totalDeductionsSum: number; // السلف والمصروفات المخصومة
+  netOwnerSum: number;        // قيمة الاستحقاق (صافي مستحق المالك)
+  disbursedSum: number;       // المصروف للمالك
+  remainingBalance: number;   // الرصيد المتبقي
+  payoutStatus: 'paid_out' | 'partial' | 'pending';
+  dues: ReRentDue[];
+  allAdvances: ReOwnerAdvance[];
+  allExpenses: RePropertyExpense[];
+  advancesDeducted: ReOwnerAdvance[];
+  expensesDeducted: RePropertyExpense[];
 }
 
 /**
@@ -1230,6 +1255,18 @@ export function calculateOwnerStatementsData(params: {
         if (pStat === 'paid_out') mDisb += dueNet;
       });
 
+      // Synchronize with direct payouts registered for this specific property & month
+      const activeMonthPayouts = (allOwnerPayouts || []).filter(p => {
+        if (!p || p.status === 'reverted' || p.isCancelled) return false;
+        const matchProp = p.propertyId === group.propertyId;
+        const pMonth = p.forMonthYear || (p.payoutDate ? p.payoutDate.slice(0, 7) : '');
+        return matchProp && pMonth === mKey;
+      });
+      const sumDirectPayouts = activeMonthPayouts.reduce((sum, p) => sum + (p.netAmountPaid || 0), 0);
+      if (sumDirectPayouts > mDisb) {
+        mDisb = sumDirectPayouts;
+      }
+
       mEntry.collectedSum = mColl;
       mEntry.disbursedSum = mDisb;
       mEntry.remainingBalance = Math.max(0, mEntry.netOwnerSum - mDisb);
@@ -1259,6 +1296,51 @@ export function calculateOwnerStatementsData(params: {
   const finalNetSettlement = Math.max(0, ownerTotalNetOwnerSum - totalOwnerDeductions);
   const finalRemainingBalance = Math.max(0, ownerTotalBalanceSum - totalOwnerDeductions);
 
+  // 5. Construct flat monthly entitlements list across properties & owners
+  const monthlyEntitlements: MonthlyEntitlementRow[] = [];
+  ownerPropertyGroups.forEach(group => {
+    group.months.forEach(m => {
+      let payoutStatus: 'paid_out' | 'partial' | 'pending' = 'pending';
+      const allDuesPaidOut = m.dues.length > 0 && m.dues.every(d => getDuePayoutStatus(d) === 'paid_out');
+      if (allDuesPaidOut || (m.remainingBalance <= 0 && m.disbursedSum > 0) || (m.paidOutCount === m.tenantCount && m.tenantCount > 0)) {
+        payoutStatus = 'paid_out';
+      } else if (m.disbursedSum > 0 && m.remainingBalance > 0) {
+        payoutStatus = 'partial';
+      }
+
+      monthlyEntitlements.push({
+        monthKey: m.forMonthYear,
+        monthNameAr: m.monthNameAr || formatMonthYearAr(m.forMonthYear),
+        propertyId: group.propertyId,
+        propertyName: group.propertyName,
+        ownerId: group.ownerId,
+        ownerName: group.ownerName,
+        tenantCount: m.tenantCount,
+        paidOutCount: m.paidOutCount,
+        rentSum: m.rentSum,
+        collectedSum: m.collectedSum,
+        commissionSum: m.commissionSum,
+        totalDeductionsSum: m.totalDeductionsSum,
+        netOwnerSum: m.netOwnerSum,
+        disbursedSum: m.disbursedSum,
+        remainingBalance: m.remainingBalance,
+        payoutStatus,
+        dues: m.dues,
+        allAdvances: m.allAdvances || [],
+        allExpenses: m.allExpenses || [],
+        advancesDeducted: m.advancesDeducted || [],
+        expensesDeducted: m.expensesDeducted || [],
+      });
+    });
+  });
+
+  // Sort monthly entitlements by month descending (most recent first), then property
+  monthlyEntitlements.sort((a, b) => {
+    const monthCmp = b.monthKey.localeCompare(a.monthKey);
+    if (monthCmp !== 0) return monthCmp;
+    return a.propertyName.localeCompare(b.propertyName);
+  });
+
   return {
     statementDues,
     ownerPropertyGroups,
@@ -1278,6 +1360,7 @@ export function calculateOwnerStatementsData(params: {
     totalOwnerDeductions,
     finalNetSettlement,
     finalRemainingBalance,
+    monthlyEntitlements,
   };
 }
 

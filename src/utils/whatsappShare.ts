@@ -3,9 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { getFileFromIndexedDB, getProxiedUrl } from './fileStorage';
+import { getFileFromIndexedDB, saveFileToIndexedDB, getProxiedUrl } from './fileStorage';
 
 export const WHATSAPP_TARGET_PHONE = '201143472682'; // 01143472682 (مصر)
+export const WHATSAPP_DISPLAY_PHONE = '01143472682';
 
 export interface CaseDocumentShareItem {
   id?: string;
@@ -16,6 +17,7 @@ export interface CaseDocumentShareItem {
   size?: string;
   category?: string;
   uploadedBy?: string;
+  storagePath?: string;
 }
 
 export interface CaseShareInfo {
@@ -24,13 +26,24 @@ export interface CaseShareInfo {
   clientName?: string;
   court?: string;
   subject?: string;
+  officeFileNo?: string;
+}
+
+export interface DocumentFileResult {
+  file: File | null;
+  blob: Blob | null;
+  mimeType: string;
+  fileName: string;
+  sizeBytes: number;
+  error?: string;
+  source: 'indexeddb' | 'r2-proxy' | 'direct-url' | 'data-uri' | 'none';
 }
 
 /**
  * Detect MIME type accurately preserving original format
  */
 export function getFileMimeType(fileName: string, fallback?: string): string {
-  const cleanName = (fileName || '').toLowerCase();
+  const cleanName = (fileName || '').toLowerCase().trim();
   const ext = cleanName.split('.').pop() || '';
 
   const mimeMap: Record<string, string> = {
@@ -47,15 +60,46 @@ export function getFileMimeType(fileName: string, fallback?: string): string {
     webp: 'image/webp',
     gif: 'image/gif',
     svg: 'image/svg+xml',
+    bmp: 'image/bmp',
     txt: 'text/plain; charset=utf-8',
     zip: 'application/zip',
-    rar: 'application/x-rar-compressed'
+    rar: 'application/x-rar-compressed',
+    '7z': 'application/x-7z-compressed',
+    mp3: 'audio/mpeg',
+    wav: 'audio/wav',
+    mp4: 'video/mp4'
   };
 
   if (mimeMap[ext]) {
     return mimeMap[ext];
   }
   return fallback || 'application/octet-stream';
+}
+
+/**
+ * Ensure the filename preserves its original extension for proper OS/WhatsApp handling
+ */
+export function ensureFileNameWithExtension(fileName: string, mimeType?: string, fileType?: string): string {
+  let name = (fileName || 'مستند').trim();
+  const hasExt = /\.[a-zA-Z0-9]{2,5}$/.test(name);
+  if (!hasExt) {
+    if (mimeType === 'application/pdf' || fileType === 'pdf') {
+      name += '.pdf';
+    } else if (mimeType === 'image/jpeg' || fileType === 'jpg' || fileType === 'jpeg') {
+      name += '.jpg';
+    } else if (mimeType === 'image/png' || fileType === 'png') {
+      name += '.png';
+    } else if (mimeType === 'image/webp') {
+      name += '.webp';
+    } else if (mimeType?.includes('wordprocessingml') || fileType === 'word' || fileType === 'doc') {
+      name += '.docx';
+    } else if (mimeType === 'application/msword') {
+      name += '.doc';
+    } else if (fileType === 'image') {
+      name += '.jpg';
+    }
+  }
+  return name;
 }
 
 /**
@@ -88,57 +132,240 @@ export function getDocumentDirectShareUrl(file: CaseDocumentShareItem): string {
 }
 
 /**
- * Fetches the binary file as a Blob and constructs a standard File object
+ * Fetches the binary file as a Blob and constructs a genuine File object
  * with the original filename and proper MIME type.
+ * STRICTLY NEVER returns a fake text file: if the real file cannot be fetched,
+ * it returns null with an explicit error description.
  */
-export async function resolveDocumentFile(file: CaseDocumentShareItem): Promise<File | null> {
-  const fileName = file.name || 'مستند';
+export async function resolveDocumentFile(file: CaseDocumentShareItem): Promise<DocumentFileResult> {
+  const originalName = file.name || 'مستند';
   let blob: Blob | null = null;
+  let source: DocumentFileResult['source'] = 'none';
 
-  // 1. Try local IndexedDB first for instant access
+  // 1. Try local IndexedDB first for instant, offline or preloaded access
   if (file.id) {
     try {
       const dbBlob = await getFileFromIndexedDB(file.id);
       if (dbBlob && dbBlob.size > 0) {
         blob = dbBlob;
+        source = 'indexeddb';
       }
     } catch (e) {
       console.warn('[resolveDocumentFile] IndexedDB warning:', e);
     }
   }
 
-  // 2. Fetch via proxy or direct URL if not in IndexedDB
-  const rawUrl = file.downloadURL || file.fileUrl;
-  if (!blob && rawUrl && rawUrl !== '#') {
-    try {
-      const targetUrl = rawUrl.startsWith('blob:') || rawUrl.startsWith('data:')
-        ? rawUrl
-        : getProxiedUrl(rawUrl);
+  // 2. Resolve candidates for URL fetch (Cloudflare R2, proxy, or direct)
+  const candidateUrls: string[] = [];
+  if (file.downloadURL && file.downloadURL !== '#') candidateUrls.push(file.downloadURL);
+  if (file.fileUrl && file.fileUrl !== '#' && !candidateUrls.includes(file.fileUrl)) candidateUrls.push(file.fileUrl);
+  if (file.storagePath && !candidateUrls.includes(file.storagePath)) candidateUrls.push(file.storagePath);
 
-      const resp = await fetch(targetUrl);
+  for (const rawUrl of candidateUrls) {
+    if (blob && blob.size > 0) break;
+
+    // A. Data URI support
+    if (rawUrl.startsWith('data:')) {
+      try {
+        const resp = await fetch(rawUrl);
+        if (resp.ok) {
+          blob = await resp.blob();
+          source = 'data-uri';
+          break;
+        }
+      } catch (_) {}
+    }
+
+    // B. Blob URL support (if active session)
+    if (rawUrl.startsWith('blob:')) {
+      try {
+        const resp = await fetch(rawUrl);
+        if (resp.ok) {
+          blob = await resp.blob();
+          source = 'data-uri';
+          break;
+        }
+      } catch (_) {}
+    }
+
+    // C. Cloudflare R2 / Server Proxy fetch
+    let targetUrl = rawUrl;
+    // If it's a relative storage key like "uploads/..." or "cases/..."
+    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://') && !targetUrl.startsWith('/')) {
+      targetUrl = `https://law-office-files.b4a4577efe20571572e0ffd097128138.r2.cloudflarestorage.com/${targetUrl}`;
+    }
+
+    // Route through server proxy to bypass CORS and ISP blocks
+    const proxiedUrl = getProxiedUrl(targetUrl);
+    try {
+      const resp = await fetch(proxiedUrl);
       if (resp.ok) {
-        blob = await resp.blob();
+        const fetchedBlob = await resp.blob();
+        if (fetchedBlob && fetchedBlob.size > 0) {
+          blob = fetchedBlob;
+          source = 'r2-proxy';
+          break;
+        }
       }
-    } catch (fetchErr) {
-      console.warn('[resolveDocumentFile] Network fetch error:', fetchErr);
+    } catch (proxyErr) {
+      console.warn('[resolveDocumentFile] Proxy fetch error:', proxyErr);
+    }
+
+    // D. Direct fetch fallback if proxied attempt failed
+    if (!blob && (targetUrl.startsWith('http://') || targetUrl.startsWith('https://'))) {
+      try {
+        const directResp = await fetch(targetUrl);
+        if (directResp.ok) {
+          const fetchedBlob = await directResp.blob();
+          if (fetchedBlob && fetchedBlob.size > 0) {
+            blob = fetchedBlob;
+            source = 'direct-url';
+            break;
+          }
+        }
+      } catch (directErr) {
+        console.warn('[resolveDocumentFile] Direct fetch error:', directErr);
+      }
     }
   }
 
-  // 3. Fallback: If blob could not be fetched (e.g. simulated doc), create informative text document
-  if (!blob) {
-    const fallbackText = `مؤسسة رميح للمحاماة والاستشارات القانونية\nالمستند: ${fileName}\nالتصنيف: ${file.category || 'مستند قضائي'}\nتم التحميل والتوثيق إلكترونياً.`;
-    blob = new Blob([fallbackText], { type: 'text/plain; charset=utf-8' });
+  // If no blob was found, return clear failure without creating dummy files
+  if (!blob || blob.size === 0) {
+    return {
+      file: null,
+      blob: null,
+      mimeType: '',
+      fileName: originalName,
+      sizeBytes: 0,
+      error: 'تعذر تحميل المستند الأصلي من التخزين السحابي Cloudflare R2. يرجى التحقق من اتصال الإنترنت أو صحة مسار الملف.',
+      source: 'none'
+    };
   }
 
-  const mimeType = getFileMimeType(fileName, blob.type);
-  try {
-    return new File([blob], fileName, { type: mimeType, lastModified: Date.now() });
-  } catch (_) {
-    // If File constructor fails in older environment, attach properties to blob
-    (blob as any).name = fileName;
-    (blob as any).lastModifiedDate = new Date();
-    return blob as any;
+  // Cache in IndexedDB for subsequent zero-latency access
+  if (file.id && blob) {
+    try {
+      await saveFileToIndexedDB(file.id, blob);
+    } catch (_) {}
   }
+
+  const mimeType = getFileMimeType(originalName, blob.type);
+  const finalFileName = ensureFileNameWithExtension(originalName, mimeType, file.type);
+
+  try {
+    const fileObj = new File([blob], finalFileName, { type: mimeType, lastModified: Date.now() });
+    return {
+      file: fileObj,
+      blob,
+      mimeType,
+      fileName: finalFileName,
+      sizeBytes: blob.size,
+      source
+    };
+  } catch (_) {
+    // If File constructor fails in older browser environment
+    (blob as any).name = finalFileName;
+    (blob as any).lastModifiedDate = new Date();
+    return {
+      file: blob as any,
+      blob,
+      mimeType,
+      fileName: finalFileName,
+      sizeBytes: blob.size,
+      source
+    };
+  }
+}
+
+/**
+ * Checks whether native file sharing is supported on this browser/device
+ */
+export function canNativeShareFiles(fileObj?: File): boolean {
+  if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') {
+    return false;
+  }
+  if (typeof navigator.canShare !== 'function') {
+    return false;
+  }
+  try {
+    if (fileObj) {
+      return navigator.canShare({ files: [fileObj] });
+    }
+    // Test with a dummy file if no file provided
+    const testFile = new File(['test'], 'test.pdf', { type: 'application/pdf' });
+    return navigator.canShare({ files: [testFile] });
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * Executes native OS file share (triggers Share Sheet with attached file)
+ */
+export async function executeNativeFileShare(
+  fileObj: File,
+  title: string,
+  text: string
+): Promise<{ success: boolean; aborted?: boolean; error?: string }> {
+  if (!canNativeShareFiles(fileObj)) {
+    return {
+      success: false,
+      error: 'المتصفح الحالي لا يدعم إرفاق الملفات عبر واجهة المشاركة الأصلية (Web Share API).'
+    };
+  }
+
+  try {
+    await navigator.share({
+      files: [fileObj],
+      title,
+      text
+    });
+    return { success: true };
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      return { success: false, aborted: true };
+    }
+    return {
+      success: false,
+      error: err?.message || 'فشلت عملية المشاركة عبر النظام'
+    };
+  }
+}
+
+/**
+ * Opens WhatsApp chat directly to the target number (01143472682)
+ */
+export function openWhatsAppChat(phone: string = WHATSAPP_TARGET_PHONE, text: string = ''): void {
+  if (typeof window === 'undefined') return;
+  const cleanPhone = phone.replace(/[^0-9]/g, '');
+  const url = `https://wa.me/${cleanPhone}${text ? `?text=${encodeURIComponent(text)}` : ''}`;
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+/**
+ * Triggers a real native download of the File in memory
+ */
+export function triggerDirectDownload(fileObj: File): void {
+  if (typeof document === 'undefined') return;
+  const url = URL.createObjectURL(fileObj);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileObj.name;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+/**
+ * Formats file size in readable Arabic format
+ */
+export function formatBytes(bytes: number): string {
+  if (!bytes || bytes === 0) return '0 بايت';
+  const k = 1024;
+  const sizes = ['بايت', 'كيلوبايت', 'ميجابايت', 'جيجابايت'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
 /**
@@ -175,73 +402,6 @@ export function buildWhatsAppMessage(
     msg += `\n🔗 *رابط تحميل ومعاينة المستند بالصيغة الأصلية:*\n${directUrl}\n`;
   }
 
-  msg += `\n_تمت المشاركة من المنظومة الرقمية لمؤسسة رميح للمحاماة_`;
+  msg += `\n_تمت المشاركة من المنظومة الرقمية لمؤسسة رميح للمحاماة (رقم التواصل: ${WHATSAPP_DISPLAY_PHONE})_`;
   return msg;
-}
-
-/**
- * Shares a case document directly via WhatsApp:
- * 1. Resolves the real binary file in its original format.
- * 2. Uses the native Web Share API (navigator.share) when supported on mobile phones
- *    to attach the actual file and share directly into WhatsApp.
- * 3. In all environments (or as fallback when file attachment is not supported directly by browser),
- *    opens WhatsApp on the specified phone number (01143472682) with the document link and details.
- */
-export async function shareDocumentViaWhatsApp(
-  file: CaseDocumentShareItem,
-  caseInfo?: CaseShareInfo
-): Promise<{ success: boolean; method: 'native-share' | 'whatsapp-web' | 'aborted' }> {
-  const directUrl = getDocumentDirectShareUrl(file);
-  const fileName = file.name || 'مستند';
-
-  // Copy link to clipboard for convenience if supported
-  if (directUrl && typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
-    try {
-      await navigator.clipboard.writeText(directUrl);
-    } catch (_) {}
-  }
-
-  // 1. Try to prepare the physical File object for native file sharing
-  let fileObj: File | null = null;
-  try {
-    fileObj = await resolveDocumentFile(file);
-  } catch (err) {
-    console.warn('[shareDocumentViaWhatsApp] File resolution warning:', err);
-  }
-
-  // 2. Check if mobile Web Share API supports file sharing
-  const canShareFiles = typeof navigator !== 'undefined' &&
-    typeof navigator.share === 'function' &&
-    typeof navigator.canShare === 'function' &&
-    fileObj &&
-    navigator.canShare({ files: [fileObj] });
-
-  if (canShareFiles && fileObj) {
-    try {
-      const shareText = `مستند قضائي: ${fileName}\nمطلوب الإرسال إلى رقم واتساب: 01143472682\n\nرابط المستند:\n${directUrl || ''}`;
-      await navigator.share({
-        files: [fileObj],
-        title: fileName,
-        text: shareText
-      });
-      return { success: true, method: 'native-share' };
-    } catch (shareErr: any) {
-      if (shareErr?.name === 'AbortError') {
-        // User voluntarily dismissed the share sheet
-        console.log('[shareDocumentViaWhatsApp] Native share dismissed by user');
-        return { success: false, method: 'aborted' };
-      }
-      console.warn('[shareDocumentViaWhatsApp] Native share failed, falling back to direct chat:', shareErr);
-    }
-  }
-
-  // 3. Direct WhatsApp chat link to phone 01143472682 (201143472682)
-  const messageText = buildWhatsAppMessage(file, caseInfo, directUrl);
-  const waUrl = `https://wa.me/${WHATSAPP_TARGET_PHONE}?text=${encodeURIComponent(messageText)}`;
-
-  if (typeof window !== 'undefined') {
-    window.open(waUrl, '_blank', 'noopener,noreferrer');
-  }
-
-  return { success: true, method: 'whatsapp-web' };
 }
