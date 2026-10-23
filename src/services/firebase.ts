@@ -4,10 +4,20 @@ import {
   getFirestore,
   persistentLocalCache, 
   persistentMultipleTabManager,
-  memoryLocalCache
+  memoryLocalCache,
+  setLogLevel,
+  enableNetwork,
+  disableNetwork
 } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import firebaseAppletConfig from "../../firebase-applet-config.json";
+
+// Silence internal Firestore retry notices and transient connection logs
+try {
+  setLogLevel('silent');
+} catch {
+  // Ignored if environment restricts setLogLevel
+}
 
 const metaEnv = (import.meta as any).env || {};
 
@@ -25,10 +35,19 @@ const app = initializeApp(firebaseConfig);
 const databaseId = metaEnv.VITE_FIREBASE_FIRESTORE_DATABASE_ID || firebaseAppletConfig.firestoreDatabaseId || "ai-studio-65bf1e76-0213-4258-96d1-c93333c07130";
 
 let firestoreInstance;
+
+// By enforcing experimentalForceLongPolling: true and useFetchStreams: false,
+// Firestore connects directly via robust HTTP long-polling requests without failing or logging
+// connection drops in iframe and Cloud Run environments.
+const baseFirestoreSettings = {
+  ignoreUndefinedProperties: true,
+  experimentalForceLongPolling: true,
+  useFetchStreams: false
+};
+
 try {
   firestoreInstance = initializeFirestore(app, {
-    ignoreUndefinedProperties: true,
-    experimentalAutoDetectLongPolling: true,
+    ...baseFirestoreSettings,
     localCache: persistentLocalCache({
       tabManager: persistentMultipleTabManager()
     })
@@ -36,21 +55,42 @@ try {
 } catch {
   try {
     firestoreInstance = initializeFirestore(app, {
-      ignoreUndefinedProperties: true,
-      experimentalAutoDetectLongPolling: true,
+      ...baseFirestoreSettings,
       localCache: memoryLocalCache()
     }, databaseId || undefined);
   } catch {
-    firestoreInstance = getFirestore(app, databaseId || undefined);
+    try {
+      firestoreInstance = initializeFirestore(app, baseFirestoreSettings, databaseId || undefined);
+    } catch {
+      firestoreInstance = getFirestore(app, databaseId || undefined);
+    }
   }
 }
 
 export const db = firestoreInstance;
-
 export const storage = getStorage(app);
 storage.maxUploadRetryTime = 6000;      // 6 seconds max upload retry
 storage.maxOperationRetryTime = 6000;   // 6 seconds max operation retry
 
+/**
+ * Reconnect helper when browser restores connectivity or wakes from sleep
+ */
+export const reconnectFirestore = async () => {
+  try {
+    if (db) {
+      await enableNetwork(db);
+    }
+  } catch {
+    // Graceful fallback if already active
+  }
+};
 
-
-
+export const pauseFirestore = async () => {
+  try {
+    if (db) {
+      await disableNetwork(db);
+    }
+  } catch {
+    // Graceful fallback
+  }
+};

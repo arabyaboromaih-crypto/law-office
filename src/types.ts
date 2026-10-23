@@ -168,7 +168,7 @@ export type LitigationDegree = 'أول درجة' | 'استئناف' | 'نقض' |
 export interface Opponent {
   id?: string;
   name: string;
-  role: string; // الصفة (مدعى عليه، مستأنف ضده، إلخ)
+  role: string; // الصفة (مدعى عليه، مستأنف ضده، مستشكل ضده، إلخ)
   address: string;
   lawyer: string;
   phone: string;

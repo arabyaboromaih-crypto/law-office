@@ -190,13 +190,31 @@ export function getDueCollectionDetails(
   collections?: ReCollectionReceipt[]
 ): DueCollectionDetails {
   const matchingReceipts = getMatchingCollectionReceipts(due, collections);
-  const totalPaid = matchingReceipts.reduce((sum, r) => sum + (r.amountPaid || 0), 0);
+  let totalPaid = matchingReceipts.reduce((sum, r) => sum + (r.amountPaid || 0), 0);
   const rentAmount = due?.rentAmount || 0;
+
+  // Rule 1: المبلغ المحصل الخاص بهذا الشهر المالي فقط (بحيث يساوي أو يقل عن الإيجار المطلوب للشهر)
+  // ولا يجوز تكرار إجمالي قيمة الإيصال الكاملة (68,000 ج.م) في كل صف
+  if (rentAmount > 0 && totalPaid > rentAmount) {
+    totalPaid = (due.collectedAmount && due.collectedAmount > 0 && due.collectedAmount <= rentAmount)
+      ? due.collectedAmount
+      : rentAmount;
+  }
+
+  // Fallback: If matchingReceipts is empty but due has collected status or recorded collectedAmount
+  if (totalPaid === 0 && (due.status === 'collected' || due.collectionStatus === 'collected' || due.collectionStatus === 'prepaid')) {
+    totalPaid = (due.collectedAmount && due.collectedAmount > 0)
+      ? Math.min(rentAmount, due.collectedAmount)
+      : rentAmount;
+  }
+
+  // Rule 3: المتأخرات والرصيد: (الإيجار المطلوب - المبلغ المحصل للشهر)
   const remainingAmount = Math.max(0, rentAmount - totalPaid);
   const dueMonthYear = (due?.forMonthYear || (due?.dueDate ? due.dueDate.slice(0, 7) : '')).trim().replace('/', '-');
   const isFuture = !!(dueMonthYear && dueMonthYear > currentMonthISO);
 
   let status: 'collected' | 'partial' | 'overdue' | 'pending_collection' | 'prepaid';
+
   if (matchingReceipts.length > 0 && rentAmount > 0 && totalPaid >= rentAmount) {
     status = isFuture ? 'prepaid' : 'collected';
   } else if (matchingReceipts.length > 0 && totalPaid > 0 && totalPaid < rentAmount) {
@@ -229,6 +247,372 @@ export function getDueCollectionDetails(
     receiptNumber: latestReceipt?.receiptNumber || '',
     paymentDate: latestReceipt?.paymentDate || '',
     paymentMethod: latestReceipt?.paymentMethod || '',
+  };
+}
+
+export interface TenantDueAllocation {
+  due: ReRentDue;
+  forMonthYear: string;
+  dueDate: string;
+  monthNameAr: string;
+  rentDue: number; // الإيجار المطلوب
+  collectedAmount: number; // المبلغ المحصل الخاص بهذا الشهر المالي فقط (بحيث يساوي أو يقل عن الإيجار المطلوب للشهر)
+  remainingArrears: number; // المتأخرات والرصيد: (الإيجار المطلوب - المبلغ المحصل للشهر)
+  receiptNumber: string;
+  paymentDate: string;
+  paymentMethod: string;
+  isFullyPaid: boolean;
+  isPartial: boolean;
+  isUnpaid: boolean;
+  isPrepaidReserve: boolean;
+  status: 'collected' | 'partial' | 'overdue' | 'pending_collection' | 'prepaid';
+  badgeClass: string;
+  badgeText: string;
+  badgeCustomStyle?: string;
+  isFromComprehensiveReceipt: boolean;
+  comprehensiveReceiptNumber?: string;
+  comprehensiveReceiptTotal?: number;
+  revertedCollection?: ReCollectionReceipt;
+  lastRevertDate?: string;
+}
+
+export interface TenantStatementAllocationResult {
+  allocations: TenantDueAllocation[];
+  totalRequired: number; // إجمالي المطلوب
+  totalCollected: number; // إجمالي المحصل
+  totalArrears: number; // إجمالي المتأخرات والرصيد
+  comprehensiveReceipts: Array<{
+    receiptNumber: string;
+    totalAmount: number;
+    paymentDate: string;
+    paymentMethod: string;
+    monthsCovered: string[];
+  }>;
+  comprehensiveReceiptNumberText: string; // e.g. "إيصال شامل رقم: #REC-2026-001 بمبلغ 68,000 ج.م"
+  primaryReceiptNumber: string;
+  hasComprehensiveReceipt: boolean;
+}
+
+/**
+ * SEQUENTIAL MONTHLY ALLOCATION ENGINE
+ * Divides lump-sum or multi-month collection receipts sequentially across dues in chronological order.
+ * Ensures:
+ * 1. collectedAmount for each row reflects ONLY this month's paid rent (<= rentDue).
+ * 2. Never duplicates full receipt value (e.g. 68,000) across multiple rows.
+ * 3. remainingArrears = Math.max(0, rentDue - collectedAmount).
+ * 4. Yields totalRequired, totalCollected, and comprehensiveReceiptNumber details for reporting.
+ */
+export function calculateTenantMonthlyAllocations(
+  dues: ReRentDue[],
+  collections: ReCollectionReceipt[],
+  todayISO: string = new Date().toISOString().slice(0, 10),
+  currentMonthISO: string = new Date().toISOString().slice(0, 7)
+): TenantStatementAllocationResult {
+  if (!dues || dues.length === 0) {
+    return {
+      allocations: [],
+      totalRequired: 0,
+      totalCollected: 0,
+      totalArrears: 0,
+      comprehensiveReceipts: [],
+      comprehensiveReceiptNumberText: 'لا توجد إيصالات',
+      primaryReceiptNumber: '',
+      hasComprehensiveReceipt: false
+    };
+  }
+
+  // Sort dues chronologically ascending
+  const sortedDues = [...dues].sort((a, b) => 
+    (a.forMonthYear || a.dueDate || '').localeCompare(b.forMonthYear || b.dueDate || '')
+  );
+
+  const tenantIds = new Set(sortedDues.map(d => d.tenantId).filter(Boolean));
+  const tenantNames = new Set(sortedDues.map(d => (d.tenantName || '').trim().toLowerCase()).filter(Boolean));
+
+  // Active (non-reverted, non-cancelled) collections for this tenant/group
+  const activeCollections = (collections || []).filter(c => {
+    if (!c || c.status === 'reverted' || c.isCancelled || !(c.amountPaid && c.amountPaid > 0)) {
+      return false;
+    }
+    const matchId = c.tenantId && tenantIds.has(c.tenantId);
+    const matchName = c.tenantName && tenantNames.has(c.tenantName.trim().toLowerCase());
+    const matchesDuesDirectly = sortedDues.some(d => 
+      (c.dueId && c.dueId === d.id) ||
+      (d.collectionReceiptId && d.collectionReceiptId === c.id) ||
+      (d.receiptNumber && c.receiptNumber && d.receiptNumber === c.receiptNumber)
+    );
+    return matchId || matchName || matchesDuesDirectly;
+  });
+
+  // Sort collections chronologically: by paymentDate ascending, then createdAt ascending
+  const sortedReceipts = [...activeCollections].sort((a, b) => 
+    (a.paymentDate || a.createdAt || '').localeCompare(b.paymentDate || b.createdAt || '')
+  );
+
+  // Initialize tracking pools for each receipt
+  interface ReceiptPool {
+    receipt: ReCollectionReceipt;
+    receiptNumber: string;
+    totalAmount: number;
+    remainingAmount: number;
+    allocatedMonths: string[];
+  }
+
+  const receiptPools: ReceiptPool[] = sortedReceipts.map(r => ({
+    receipt: r,
+    receiptNumber: r.receiptNumber || 'بدون رقم',
+    totalAmount: Number(r.amountPaid) || 0,
+    remainingAmount: Number(r.amountPaid) || 0,
+    allocatedMonths: []
+  }));
+
+  const dueAllocationsMap = new Map<string, {
+    paid: number;
+    receiptsUsed: ReceiptPool[];
+  }>();
+
+  sortedDues.forEach(d => {
+    dueAllocationsMap.set(d.id, { paid: 0, receiptsUsed: [] });
+  });
+
+  // Pass 1: Direct 1-to-1 links (when receipt explicitly targets single due and isn't shared)
+  receiptPools.forEach(pool => {
+    const directDues = sortedDues.filter(d => 
+      pool.receipt.dueId === d.id || d.collectionReceiptId === pool.receipt.id
+    );
+    if (directDues.length === 1 && pool.remainingAmount > 0) {
+      const targetDue = directDues[0];
+      const rec = dueAllocationsMap.get(targetDue.id)!;
+      const needed = Math.max(0, (targetDue.rentAmount || 0) - rec.paid);
+      const canTake = Math.min(needed, pool.remainingAmount);
+      if (canTake > 0) {
+        rec.paid += canTake;
+        pool.remainingAmount -= canTake;
+        pool.allocatedMonths.push(targetDue.forMonthYear || targetDue.dueDate || '');
+        if (!rec.receiptsUsed.includes(pool)) rec.receiptsUsed.push(pool);
+      }
+    }
+  });
+
+  // Pass 2: Shared receipts matching by receiptNumber or collection links across multiple dues
+  receiptPools.forEach(pool => {
+    if (pool.remainingAmount <= 0) return;
+    const matchingDuesByReceiptNo = sortedDues.filter(d => 
+      (d.receiptNumber && pool.receiptNumber && d.receiptNumber === pool.receiptNumber) ||
+      (d.collectionReceiptId && pool.receipt.id && d.collectionReceiptId === pool.receipt.id) ||
+      (pool.receipt.dueId && pool.receipt.dueId === d.id)
+    );
+    if (matchingDuesByReceiptNo.length > 0) {
+      for (const targetDue of matchingDuesByReceiptNo) {
+        if (pool.remainingAmount <= 0) break;
+        const rec = dueAllocationsMap.get(targetDue.id)!;
+        const needed = Math.max(0, (targetDue.rentAmount || 0) - rec.paid);
+        if (needed <= 0) continue;
+        const canTake = Math.min(needed, pool.remainingAmount);
+        if (canTake > 0) {
+          rec.paid += canTake;
+          pool.remainingAmount -= canTake;
+          pool.allocatedMonths.push(targetDue.forMonthYear || targetDue.dueDate || '');
+          if (!rec.receiptsUsed.includes(pool)) rec.receiptsUsed.push(pool);
+        }
+      }
+    }
+  });
+
+  // Pass 3: Sequential allocation of remaining receipt balances to chronological dues
+  receiptPools.forEach(pool => {
+    if (pool.remainingAmount <= 0) return;
+
+    // Check if receipt has forMonthYear matching a specific month
+    const rMonth = (pool.receipt.forMonthYear || '').trim().slice(0, 7);
+    if (rMonth) {
+      const sameMonthDue = sortedDues.find(d => (d.forMonthYear || '').slice(0, 7) === rMonth);
+      if (sameMonthDue) {
+        const rec = dueAllocationsMap.get(sameMonthDue.id)!;
+        const needed = Math.max(0, (sameMonthDue.rentAmount || 0) - rec.paid);
+        if (needed > 0) {
+          const canTake = Math.min(needed, pool.remainingAmount);
+          if (canTake > 0) {
+            rec.paid += canTake;
+            pool.remainingAmount -= canTake;
+            pool.allocatedMonths.push(sameMonthDue.forMonthYear || sameMonthDue.dueDate || '');
+            if (!rec.receiptsUsed.includes(pool)) rec.receiptsUsed.push(pool);
+          }
+        }
+      }
+    }
+
+    // Allocate any remaining receipt balance (e.g. 68,000 lump-sum) across remaining unpaid dues chronologically
+    if (pool.remainingAmount > 0) {
+      for (const targetDue of sortedDues) {
+        if (pool.remainingAmount <= 0) break;
+        const rec = dueAllocationsMap.get(targetDue.id)!;
+        const needed = Math.max(0, (targetDue.rentAmount || 0) - rec.paid);
+        if (needed <= 0) continue;
+        const canTake = Math.min(needed, pool.remainingAmount);
+        if (canTake > 0) {
+          rec.paid += canTake;
+          pool.remainingAmount -= canTake;
+          pool.allocatedMonths.push(targetDue.forMonthYear || targetDue.dueDate || '');
+          if (!rec.receiptsUsed.includes(pool)) rec.receiptsUsed.push(pool);
+        }
+      }
+    }
+  });
+
+  // Pass 4: Fallback if due itself has collectedAmount recorded directly on document
+  // If an individual due recorded a lump-sum collectedAmount (e.g. 68,000 for 17,000 rent),
+  // cap this month to rentAmount and cascade remaining balance to subsequent consecutive dues sequentially.
+  sortedDues.forEach((d, idx) => {
+    const rec = dueAllocationsMap.get(d.id)!;
+    const rent = d.rentAmount || 0;
+    if (rec.paid === 0 && (d.status === 'collected' || (d.collectedAmount || 0) > 0)) {
+      const docPaid = (d.collectedAmount && d.collectedAmount > 0) ? d.collectedAmount : rent;
+      const thisMonthTake = Math.min(rent, docPaid);
+      rec.paid = thisMonthTake;
+      let excess = docPaid - thisMonthTake;
+      if (excess > 0) {
+        for (let j = idx + 1; j < sortedDues.length; j++) {
+          if (excess <= 0) break;
+          const nextDue = sortedDues[j];
+          const nextRec = dueAllocationsMap.get(nextDue.id)!;
+          const nextNeeded = Math.max(0, (nextDue.rentAmount || 0) - nextRec.paid);
+          if (nextNeeded <= 0) continue;
+          const take = Math.min(nextNeeded, excess);
+          nextRec.paid += take;
+          excess -= take;
+        }
+      }
+    }
+  });
+
+  const allocations: TenantDueAllocation[] = [];
+  let totalRequired = 0;
+  let totalCollected = 0;
+
+  sortedDues.forEach(d => {
+    const rec = dueAllocationsMap.get(d.id)!;
+    const rentDue = d.rentAmount || 0;
+    // Rule 1: المبلغ المحصل الخاص بهذا الشهر المالي فقط (بحيث يساوي أو يقل عن الإيجار المطلوب للشهر)
+    const collectedAmount = Math.min(rentDue, rec.paid);
+    // Rule 3: المتأخرات والرصيد: (الإيجار المطلوب - المبلغ المحصل للشهر)
+    const remainingArrears = Math.max(0, rentDue - collectedAmount);
+
+    totalRequired += rentDue;
+    totalCollected += collectedAmount;
+
+    const isFullyPaid = rentDue > 0 && collectedAmount >= rentDue;
+    const isPartial = collectedAmount > 0 && collectedAmount < rentDue;
+    const isUnpaid = collectedAmount === 0;
+
+    const isPrepaidReserve = isFullyPaid && !!(d.forMonthYear && d.forMonthYear > currentMonthISO);
+
+    let status: 'collected' | 'partial' | 'overdue' | 'pending_collection' | 'prepaid';
+    let badgeClass = 'badge-pending';
+    let badgeText = 'مستحق';
+    let badgeCustomStyle = '';
+
+    const revertedCollection = (collections || []).find(c => 
+      (c.status === 'reverted' || c.isCancelled) &&
+      (c.tenantId === d.tenantId || (c.tenantName && d.tenantName && c.tenantName.trim().toLowerCase() === d.tenantName.trim().toLowerCase())) &&
+      ((c.dueId && c.dueId === d.id) || c.forMonthYear === d.forMonthYear || d.lastRevertDate)
+    );
+
+    if (isFullyPaid) {
+      status = isPrepaidReserve ? 'prepaid' : 'collected';
+      badgeClass = 'badge-collected';
+      badgeText = isPrepaidReserve ? 'مقدم رصيد' : 'مسدد بالكامل';
+    } else if (isPartial) {
+      status = 'partial';
+      badgeClass = 'badge-pending';
+      badgeText = 'مسدد جزئياً';
+      badgeCustomStyle = 'background-color: #fef3c7; color: #b45309; border: 1px solid #f59e0b;';
+    } else if (revertedCollection || d.lastRevertDate) {
+      status = 'overdue';
+      badgeClass = 'badge-overdue';
+      badgeText = 'مرتجع / ملغى';
+    } else {
+      const isOverdue = (d.dueDate && d.dueDate <= todayISO) || (d.forMonthYear && d.forMonthYear <= currentMonthISO);
+      status = isOverdue ? 'overdue' : 'pending_collection';
+      badgeClass = isOverdue ? 'badge-overdue' : 'badge-pending';
+      badgeText = isOverdue ? 'متأخر' : 'مستحق';
+    }
+
+    const primaryPool = rec.receiptsUsed[0] || null;
+    const receiptNumber = primaryPool?.receiptNumber || d.receiptNumber || '';
+    const paymentDate = primaryPool?.receipt.paymentDate || d.paidDate || '';
+    const paymentMethod = primaryPool?.receipt.paymentMethod || d.paymentMethod || '';
+
+    const isFromComprehensiveReceipt = !!(
+      primaryPool && 
+      (primaryPool.totalAmount > rentDue || primaryPool.allocatedMonths.length > 1)
+    );
+
+    allocations.push({
+      due: d,
+      forMonthYear: d.forMonthYear || '',
+      dueDate: d.dueDate || '',
+      monthNameAr: d.monthNameAr || d.forMonthYear || '',
+      rentDue,
+      collectedAmount,
+      remainingArrears,
+      receiptNumber,
+      paymentDate,
+      paymentMethod,
+      isFullyPaid,
+      isPartial,
+      isUnpaid,
+      isPrepaidReserve,
+      status,
+      badgeClass,
+      badgeText,
+      badgeCustomStyle,
+      isFromComprehensiveReceipt,
+      comprehensiveReceiptNumber: isFromComprehensiveReceipt ? primaryPool?.receiptNumber : undefined,
+      comprehensiveReceiptTotal: isFromComprehensiveReceipt ? primaryPool?.totalAmount : undefined,
+      revertedCollection,
+      lastRevertDate: d.lastRevertDate
+    });
+  });
+
+  const totalArrears = Math.max(0, totalRequired - totalCollected);
+
+  const comprehensiveReceipts = receiptPools
+    .filter(p => p.allocatedMonths.length > 0 || p.totalAmount > (dues[0]?.rentAmount || 0))
+    .map(p => ({
+      receiptNumber: p.receiptNumber,
+      totalAmount: p.totalAmount,
+      paymentDate: p.receipt.paymentDate || '',
+      paymentMethod: p.receipt.paymentMethod || '',
+      monthsCovered: p.allocatedMonths
+    }));
+
+  const hasComprehensiveReceipt = comprehensiveReceipts.some(r => r.monthsCovered.length > 1 || r.totalAmount > (dues[0]?.rentAmount || 0));
+
+  let comprehensiveReceiptNumberText = '';
+  if (comprehensiveReceipts.length === 1) {
+    const cr = comprehensiveReceipts[0];
+    comprehensiveReceiptNumberText = `إيصال شامل #${cr.receiptNumber} (إجمالي: ${cr.totalAmount.toLocaleString('ar-EG')} ج.م)`;
+  } else if (comprehensiveReceipts.length > 1) {
+    comprehensiveReceiptNumberText = comprehensiveReceipts.map(cr => `#${cr.receiptNumber} (${cr.totalAmount.toLocaleString('ar-EG')} ج.م)`).join(' ، ');
+  } else if (allocations.some(a => a.receiptNumber)) {
+    const uniqueReceipts = Array.from(new Set(allocations.map(a => a.receiptNumber).filter(Boolean)));
+    comprehensiveReceiptNumberText = uniqueReceipts.map(r => `#${r}`).join(' ، ');
+  } else {
+    comprehensiveReceiptNumberText = 'لا يوجد إيصال مسجل';
+  }
+
+  const primaryReceiptNumber = comprehensiveReceipts[0]?.receiptNumber || allocations.find(a => a.receiptNumber)?.receiptNumber || '';
+
+  return {
+    allocations,
+    totalRequired,
+    totalCollected,
+    totalArrears,
+    comprehensiveReceipts,
+    comprehensiveReceiptNumberText,
+    primaryReceiptNumber,
+    hasComprehensiveReceipt
   };
 }
 

@@ -21,6 +21,7 @@ import { useBackHandler } from '../utils/navigationManager';
 import { ref, uploadBytes, getDownloadURL, deleteObject, uploadBytesResumable } from "firebase/storage";
 import { storage } from "../services/firebase";
 import WhatsAppShareButton from './WhatsAppShareButton';
+import PartyRoleSelect from './PartyRoleSelect';
 
 function uploadFile(
   storageRef: any,
@@ -2497,12 +2498,10 @@ export default function ArchivePanel({
                             </div>
                             <div>
                               <label className="block text-[10px] font-semibold text-slate-500 mb-1">الصفة بالدعوى</label>
-                              <input
-                                type="text"
-                                placeholder="مثال: مدعي، مستأنف"
-                                value={client.role}
-                                onChange={(e) => handleUpdateClient(idx, { role: e.target.value })}
-                                className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs text-right"
+                              <PartyRoleSelect
+                                value={client.role || ''}
+                                onChange={(val) => handleUpdateClient(idx, { role: val })}
+                                placeholder="اختر الصفة بالدعوى..."
                               />
                             </div>
                             <div>
@@ -2582,12 +2581,10 @@ export default function ArchivePanel({
                             </div>
                             <div>
                               <label className="block text-[10px] font-semibold text-slate-500 mb-1">الصفة بالدعوى</label>
-                              <input
-                                type="text"
-                                placeholder="مثال: مدعى عليه"
-                                value={opponent.role}
-                                onChange={(e) => handleUpdateOpponent(idx, { role: e.target.value })}
-                                className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs text-right"
+                              <PartyRoleSelect
+                                value={opponent.role || ''}
+                                onChange={(val) => handleUpdateOpponent(idx, { role: val })}
+                                placeholder="اختر الصفة بالدعوى..."
                               />
                             </div>
                             <div>

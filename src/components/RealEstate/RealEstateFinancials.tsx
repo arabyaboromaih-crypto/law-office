@@ -32,7 +32,7 @@ import {
   calculateOwnerStatementsData, isTenantMonthSuspended, getMatchingCollectionReceipts, 
   isAdvanceDeductedFromEntitlement, getAdvanceDeductedAmount, 
   getAdvanceDeductedFromEntitlementAmount, getApplicableRentAdjustment, formatMonthYearAr,
-  MonthlyEntitlementRow
+  MonthlyEntitlementRow, calculateTenantMonthlyAllocations
 } from './RealEstateData';
 import SearchableTenantDropdown from './SearchableTenantDropdown';
 import TenantCollectionReceiptsModal from './TenantCollectionReceiptsModal';
@@ -7951,32 +7951,24 @@ export default function RealEstateFinancials({
             // Sort chronologically (asc) first to compute exact running balance
             const sortedAscDues = [...filteredTenantDues].sort((a, b) => (a.forMonthYear || '').localeCompare(b.forMonthYear || ''));
 
-            let sumRequired = 0;
-            let sumCollected = 0;
-            let sumRemaining = 0;
+            const tAlloc = calculateTenantMonthlyAllocations(sortedAscDues, collections, todayISO, currentMonthISO);
+            const sumRequired = tAlloc.totalRequired;
+            const sumCollected = tAlloc.totalCollected;
+            const sumRemaining = tAlloc.totalArrears;
             let countPaidMonths = 0;
             let countUnpaidMonths = 0;
 
             let cumulativeBalance = 0;
-            const duesWithCalculatedBalances = sortedAscDues.map(d => {
-              const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
-              const revertedCollection = collections.find(c => 
-                (c.status === 'reverted' || c.isCancelled) &&
-                c.tenantId === d.tenantId &&
-                (c.forMonthYear === d.forMonthYear || (c.paymentDate && c.paymentDate.slice(0, 7) === d.forMonthYear))
-              );
-
-              const cStatus = details.status;
-              const isCollected = details.isFullyPaid;
-              const paidAmt = details.totalPaid;
-              const remainingAmt = details.remainingAmount;
-              const paidDateVal = details.paymentDate || '';
-              const receiptNoVal = details.receiptNumber || '';
-              const paymentMethodVal = details.paymentMethod || '';
-
-              sumRequired += d.rentAmount;
-              sumCollected += paidAmt;
-              sumRemaining += remainingAmt;
+            const duesWithCalculatedBalances = tAlloc.allocations.map(alloc => {
+              const d = alloc.due;
+              const revertedCollection = alloc.revertedCollection;
+              const cStatus = alloc.status;
+              const isCollected = alloc.isFullyPaid;
+              const paidAmt = alloc.collectedAmount;
+              const remainingAmt = alloc.remainingArrears;
+              const paidDateVal = alloc.paymentDate || '';
+              const receiptNoVal = alloc.receiptNumber || '';
+              const paymentMethodVal = alloc.paymentMethod || '';
 
               if (isCollected) {
                 countPaidMonths++;
@@ -7987,7 +7979,7 @@ export default function RealEstateFinancials({
               let computedStatus: 'collected' | 'partial' | 'unpaid' = 'unpaid';
               if (isCollected) {
                 computedStatus = 'collected';
-              } else if (details.isPartial) {
+              } else if (alloc.isPartial) {
                 computedStatus = 'partial';
               } else {
                 computedStatus = 'unpaid';
@@ -8375,12 +8367,10 @@ export default function RealEstateFinancials({
                               const currentMonthDue = tenantDuesAll.find(d => d.forMonthYear === currentMonthISO);
                               const latestTenantDue = tenantDuesAll.length > 0 ? tenantDuesAll[tenantDuesAll.length - 1] : null;
                               const tRentCurrent = targetFilteredDue?.rentAmount ?? currentMonthDue?.rentAmount ?? latestTenantDue?.rentAmount ?? t.rentAmount ?? tUnit?.rentValue ?? 0;
-                              const tTotalReq = tenantDuesAll.reduce((s, d) => s + (d.rentAmount || 0), 0);
-                              const tTotalColl = tenantDuesAll.reduce((s, d) => {
-                                const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
-                                return s + details.totalPaid;
-                              }, 0);
-                              const tArrears = Math.max(0, tTotalReq - tTotalColl);
+                              const tAlloc = calculateTenantMonthlyAllocations(tenantDuesAll, collections, todayISO, currentMonthISO);
+                              const tTotalReq = tAlloc.totalRequired;
+                              const tTotalColl = tAlloc.totalCollected;
+                              const tArrears = tAlloc.totalArrears;
 
                               const activeTenantCollections = collections.filter(c => c.tenantId === t.id && c.status !== 'reverted' && !c.isCancelled);
                               const collDates = [

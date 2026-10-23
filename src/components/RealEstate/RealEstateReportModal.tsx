@@ -19,7 +19,8 @@ import {
   formatMonthYearAr,
   isAdvanceDeductedFromEntitlement,
   getAdvanceDeductedAmount,
-  getAdvanceDeductedFromEntitlementAmount
+  getAdvanceDeductedFromEntitlementAmount,
+  calculateTenantMonthlyAllocations
 } from './RealEstateData';
 
 export type ReportType = 
@@ -515,6 +516,30 @@ export function generateRealEstateReportHTML(params: {
     sumAdvances = sumDeductedAdvances;
     sumNetOwner = finalNetSettlement;
     sumDisbursed = ownerTotalDisbursedSum;
+  } else if (reportType === 'tenant_statement' || reportType === 'tenant_collections') {
+    if (selectedTenantId !== 'all') {
+      const tAlloc = calculateTenantMonthlyAllocations(filteredDues, collections, todayISO, currentMonthISO);
+      sumRent = tAlloc.totalRequired;
+      sumCollected = tAlloc.totalCollected;
+    } else {
+      const displayTenants = tenants.filter(t => {
+        if (selectedPropertyId === 'all') return true;
+        if (t.propertyId && t.propertyId === selectedPropertyId) return true;
+        const u = units.find(unit => unit.id === t.unitId);
+        return u?.propertyId === selectedPropertyId;
+      });
+      displayTenants.forEach(t => {
+        const tenantDuesInPeriod = filteredDues.filter(d => d.tenantId === t.id);
+        const tAlloc = calculateTenantMonthlyAllocations(tenantDuesInPeriod, collections, todayISO, currentMonthISO);
+        sumRent += tAlloc.totalRequired;
+        sumCollected += tAlloc.totalCollected;
+      });
+    }
+    filteredDues.forEach(d => {
+      const commAmt = getDueCommissionAmount(d, owners, properties, filteredDues, commissionStatuses);
+      sumCommission += commAmt;
+      sumNetOwner += Math.max(0, (d.rentAmount || 0) - commAmt);
+    });
   } else {
     filteredDues.forEach(d => {
       const commAmt = getDueCommissionAmount(d, owners, properties, filteredDues, commissionStatuses);
@@ -1260,7 +1285,7 @@ export function generateRealEstateReportHTML(params: {
           <span class="kpi-val">${leasedUnitsCount} مؤجرة / ${vacantUnitsCount} شاغرة</span>
         </div>
       </div>
-    ` : reportType === 'tenant_statement' ? `
+    ` : (reportType === 'tenant_statement' || reportType === 'tenant_collections') ? `
       <div class="kpi-row">
         <div class="kpi-card gold">
           <span class="kpi-lbl">إجمالي الإيجارات المطلوبة</span>
@@ -1415,7 +1440,7 @@ export function generateRealEstateReportHTML(params: {
               <td style="font-size: 8pt; text-align: center;">تقرير معتمد رسمياً</td>
             </tr>
           </tbody>
-        ` : reportType === 'tenant_statement' && selectedTenantId === 'all' ? `
+        ` : (reportType === 'tenant_statement' || reportType === 'tenant_collections') && selectedTenantId === 'all' ? `
           <thead>
             <tr>
               <th style="width: 3%;">#</th>
@@ -1475,12 +1500,10 @@ export function generateRealEstateReportHTML(params: {
                 const currentMonthDue = tenantDuesInPeriod.find(d => d.forMonthYear === currentMonthISO);
                 const latestTenantDue = tenantDuesInPeriod.length > 0 ? tenantDuesInPeriod[tenantDuesInPeriod.length - 1] : null;
                 const tRentCurrent = targetFilteredDue?.rentAmount ?? currentMonthDue?.rentAmount ?? latestTenantDue?.rentAmount ?? t.rentAmount ?? tUnit?.rentValue ?? 0;
-                const tTotalReq = tenantDuesInPeriod.reduce((s, d) => s + (d.rentAmount || 0), 0);
-                const tTotalColl = tenantDuesInPeriod.reduce((s, d) => {
-                  const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
-                  return s + details.totalPaid;
-                }, 0);
-                const tArrears = Math.max(0, tTotalReq - tTotalColl);
+                const tAlloc = calculateTenantMonthlyAllocations(tenantDuesInPeriod, collections, todayISO, currentMonthISO);
+                const tTotalReq = tAlloc.totalRequired;
+                const tTotalColl = tAlloc.totalCollected;
+                const tArrears = tAlloc.totalArrears;
 
                 tableSumReq += tTotalReq;
                 tableSumColl += tTotalColl;
@@ -1510,6 +1533,9 @@ export function generateRealEstateReportHTML(params: {
                 `;
               }).join('');
 
+              const uniqueReceiptNos = Array.from(new Set(activeCollections.map(c => c.receiptNumber).filter(Boolean)));
+              const allComprehensiveReceiptsText = uniqueReceiptNos.length > 0 ? uniqueReceiptNos.map(r => `#${r}`).join(' ، ') : 'سندات وإيصالات مقيدة بالنظام';
+
               return rowsHtml + `
                 <tr class="total-row">
                   <td colspan="5" style="text-align: right; padding-right: 15px;">
@@ -1526,102 +1552,187 @@ export function generateRealEstateReportHTML(params: {
                   <td class="num-font gold-text">${tableSumArrears.toLocaleString('ar-EG')} ج.م</td>
                   <td class="num-font">—</td>
                 </tr>
+              </tbody>
+            </table>
+
+            <!-- SUMMARY BOX FOR ALL TENANTS -->
+            <div style="margin-top: 20px; margin-bottom: 22px; background: #f8fafc; border: 2px solid #cbd5e1; border-radius: 12px; padding: 16px 20px; page-break-inside: avoid;">
+              <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1.5px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 14px;">
+                <div style="font-size: 10.5pt; font-weight: 900; color: #0f172a; display: flex; align-items: center; gap: 8px;">
+                  <span style="color: #b45309; font-size: 13pt;">📋</span>
+                  <span>ملخص التحصيل والتسوية المالية الشاملة للمستأجرين</span>
+                </div>
+                <div style="font-size: 8pt; font-weight: 700; color: #475569; background: #e2e8f0; padding: 3px 10px; border-radius: 6px;">
+                  بيانات معتمدة من واقع السندات المقيدة
+                </div>
+              </div>
+
+              <!-- Metrics Grid: إجمالي المطلوب / إجمالي المحصل / المتأخرات والرصيد -->
+              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 14px;">
+                <div style="background: #ffffff; border: 1.5px solid #cbd5e1; border-top: 3px solid #d4a84f; border-radius: 10px; padding: 12px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                  <span style="display: block; font-size: 8.5pt; color: #64748b; font-weight: 800; margin-bottom: 5px;">إجمالي الإيجار المطلوب</span>
+                  <span class="num-font" style="font-size: 13pt; font-weight: 900; color: #0f172a;">${tableSumReq.toLocaleString('ar-EG')} ج.م</span>
+                </div>
+
+                <div style="background: #ffffff; border: 1.5px solid #a7f3d0; border-top: 3px solid #059669; border-radius: 10px; padding: 12px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                  <span style="display: block; font-size: 8.5pt; color: #065f46; font-weight: 800; margin-bottom: 5px;">إجمالي المبلغ المحصل</span>
+                  <span class="num-font" style="font-size: 13pt; font-weight: 900; color: #059669;">${tableSumColl.toLocaleString('ar-EG')} ج.م</span>
+                </div>
+
+                <div style="background: #ffffff; border: 1.5px solid ${tableSumArrears > 0 ? '#fecaca' : '#a7f3d0'}; border-top: 3px solid ${tableSumArrears > 0 ? '#dc2626' : '#059669'}; border-radius: 10px; padding: 12px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                  <span style="display: block; font-size: 8.5pt; color: ${tableSumArrears > 0 ? '#991b1b' : '#065f46'}; font-weight: 800; margin-bottom: 5px;">إجمالي المتأخرات والرصيد</span>
+                  <span class="num-font" style="font-size: 13pt; font-weight: 900; color: ${tableSumArrears > 0 ? '#dc2626' : '#059669'};">${tableSumArrears.toLocaleString('ar-EG')} ج.م</span>
+                </div>
+              </div>
+
+              <!-- Comprehensive Receipt Number and details -->
+              <div style="background: #f0f7ff; border: 1.5px dashed #3b82f6; border-radius: 10px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-size: 11pt;">🧾</span>
+                  <div>
+                    <span style="font-weight: 900; color: #1e3a8a; font-size: 9.5pt;">رقم الإيصال الشامل / السندات: </span>
+                    <span class="num-font" style="font-weight: 900; color: #1d4ed8; font-size: 10.5pt;">${allComprehensiveReceiptsText}</span>
+                  </div>
+                </div>
+                <div style="font-size: 8pt; color: #2563eb; font-weight: 800; background: #ffffff; padding: 4px 10px; border-radius: 6px; border: 1px solid #bfdbfe;">
+                  تم تقسيم مبالغ الإيصالات برمجياً بالتوالي لتغطية الإيجار المطلوب لكل شهر دون تكرار الإجمالي في الصفوف
+                </div>
+              </div>
+            </div>
+
+            <table class="report-table" style="display: none;">
+              <tbody>
               `;
             })()}
           </tbody>
-        ` : reportType === 'tenant_statement' ? `
-          <thead>
-            <tr>
-              <th style="width: 4%;">#</th>
-              <th style="width: 16%;">اسم المستأجر والعقار</th>
-              <th style="width: 10%;">الشهر المالي</th>
-              <th style="width: 10%;">تاريخ الاستحقاق</th>
-              <th style="width: 12%;">الإيجار المطلوب</th>
-              <th style="width: 12%;">المبلغ المحصل</th>
-              <th style="width: 12%;">المتأخرات والرصيد</th>
-              <th style="width: 14%;">الإيصال والتاريخ</th>
-              <th style="width: 10%;">حالة السداد</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${filteredDues.length === 0 ? `
+        ` : (reportType === 'tenant_statement' || reportType === 'tenant_collections') ? (() => {
+            const tenantAlloc = calculateTenantMonthlyAllocations(filteredDues, collections, todayISO, currentMonthISO);
+            const { allocations, totalRequired, totalCollected, totalArrears, comprehensiveReceiptNumberText } = tenantAlloc;
+
+            const rowsHtml = allocations.length === 0 ? `
               <tr>
                 <td colspan="9" style="padding: 20px; color: #64748b; font-weight: bold;">
                   لا توجد سجلاّت ماليّة أو إيجاريّة مطابقة للمستأجر المحدد.
                 </td>
               </tr>
-            ` : filteredDues.map((d, idx) => {
-              const details = getDueCollectionDetails(d, todayISO, currentMonthISO, collections);
-              const rentDue = d.rentAmount || 0;
-              const collected = details.totalPaid;
-              const arrears = details.remainingAmount;
-              const isCollected = details.isFullyPaid;
-              const isPartial = details.isPartial;
-              const paidDateVal = details.paymentDate || '';
-              const receiptNoVal = details.receiptNumber || '';
-
-              const revertedColl = collections.find(c => 
-                (c.status === 'reverted' || c.isCancelled) &&
-                c.tenantId === d.tenantId &&
-                ((c.dueId && c.dueId === d.id) || c.forMonthYear === d.forMonthYear)
-              );
-
-              const isPrepaidReserve = isCollected && d.forMonthYear && d.forMonthYear > currentMonthISO;
-              let badgeClass = 'badge-pending';
-              let badgeText = 'مستحق';
-              let badgeCustomStyle = '';
-
-              if (isCollected) {
-                badgeClass = 'badge-collected';
-                badgeText = isPrepaidReserve ? 'مقدم رصيد' : 'مسدد بالكامل';
-              } else if (isPartial) {
-                badgeClass = 'badge-pending';
-                badgeText = 'مسدد جزئياً';
-                badgeCustomStyle = 'background-color: #fef3c7; color: #b45309; border: 1px solid #f59e0b;';
-              } else if (revertedColl || d.lastRevertDate) {
-                badgeClass = 'badge-overdue';
-                badgeText = 'مرتجع / ملغى';
-              } else if (details.status === 'overdue') {
-                badgeClass = 'badge-overdue';
-                badgeText = 'متأخر';
-              }
+            ` : allocations.map((alloc, idx) => {
+              const d = alloc.due;
+              const rentDue = alloc.rentDue;
+              const collected = alloc.collectedAmount;
+              const arrears = alloc.remainingArrears;
+              const isCollected = alloc.isFullyPaid;
+              const isPartial = alloc.isPartial;
+              const paidDateVal = alloc.paymentDate;
+              const receiptNoVal = alloc.receiptNumber;
+              const isPrepaidReserve = alloc.isPrepaidReserve;
+              const revertedColl = alloc.revertedCollection;
 
               return `
                 <tr>
                   <td class="num-font">${idx + 1}</td>
                   <td style="font-weight: 700;">${d.tenantName || '—'}<br><span style="font-size: 7.5pt; color: #64748b;">${d.propertyName || ''} - وحدة ${d.unitNumber || ''}</span></td>
-                  <td class="num-font" style="font-weight: 700;">${d.forMonthYear || ''}</td>
+                  <td class="num-font" style="font-weight: 700;">${alloc.monthNameAr || d.forMonthYear || ''}</td>
                   <td class="num-font" style="color: #475569;">${d.dueDate || ''}</td>
                   <td class="num-font" style="font-weight: 800; color: #1e293b;">${rentDue.toLocaleString('ar-EG')} ج.م</td>
-                  <td class="num-font" style="color: #059669; font-weight: 700;">${collected.toLocaleString('ar-EG')} ج.م</td>
-                  <td class="num-font" style="color: ${arrears > 0 ? '#dc2626' : '#059669'}; font-weight: 700;">${arrears.toLocaleString('ar-EG')} ج.م</td>
+                  <td class="num-font" style="color: #059669; font-weight: 800;">${collected.toLocaleString('ar-EG')} ج.م</td>
+                  <td class="num-font" style="color: ${arrears > 0 ? '#dc2626' : '#059669'}; font-weight: 800;">${arrears.toLocaleString('ar-EG')} ج.م</td>
                   <td class="num-font" style="font-size: 8pt; color: #334155;">
                     ${isCollected 
-                      ? `إيصال #${receiptNoVal || 'محصل'}<br><span style="color: #64748b;">${paidDateVal || ''}</span>` 
+                      ? (alloc.isFromComprehensiveReceipt
+                          ? `<span style="color: #1e40af; font-weight: 800;">إيصال شامل #${receiptNoVal || 'محصل'}</span><br><span style="color: #64748b;">${paidDateVal || ''}</span><br><span style="color: #2563eb; font-size: 7pt; font-weight: bold;">(مسدد من إيصال شامل ${alloc.comprehensiveReceiptTotal?.toLocaleString('ar-EG')} ج.م)</span>`
+                          : `إيصال #${receiptNoVal || 'محصل'}<br><span style="color: #64748b;">${paidDateVal || ''}</span>`
+                        )
                       : isPartial
-                        ? `إيصال #${receiptNoVal || 'جزئي'}<br><span style="color: #64748b;">${paidDateVal || ''}</span><br><span style="color: #b45309; font-size: 7pt; font-weight: bold;">(متبقي: ${arrears.toLocaleString('ar-EG')} ج.م)</span>`
-                        : (revertedColl || d.lastRevertDate
-                            ? `<span style="color: #dc2626; font-weight: 800; font-size: 7.5pt;">⚠️ تم إلغاء التحصيل والرجوع عنه</span><br><span style="color: #991b1b; font-size: 7pt;">تاريخ الرجوع: ${revertedColl?.updatedAt?.slice(0, 10) || revertedColl?.revertedAt || d.lastRevertDate || paidDateVal || '—'}</span>`
+                        ? `<span style="color: #b45309; font-weight: 800;">إيصال #${receiptNoVal || 'جزئي'}</span><br><span style="color: #64748b;">${paidDateVal || ''}</span><br><span style="color: #b45309; font-size: 7pt; font-weight: bold;">(متبقي: ${arrears.toLocaleString('ar-EG')} ج.م)</span>`
+                        : (revertedColl || alloc.lastRevertDate
+                            ? `<span style="color: #dc2626; font-weight: 800; font-size: 7.5pt;">⚠️ تم إلغاء التحصيل والرجوع عنه</span><br><span style="color: #991b1b; font-size: 7pt;">تاريخ الرجوع: ${revertedColl?.updatedAt?.slice(0, 10) || revertedColl?.revertedAt || alloc.lastRevertDate || paidDateVal || '—'}</span>`
                             : '—'
                           )
                     }
                   </td>
-                  <td><span class="badge ${badgeClass}" ${badgeCustomStyle ? `style="${badgeCustomStyle}"` : ''}>${badgeText}</span></td>
+                  <td><span class="badge ${alloc.badgeClass}" ${alloc.badgeCustomStyle ? `style="${alloc.badgeCustomStyle}"` : ''}>${alloc.badgeText}</span></td>
                 </tr>
               `;
-            }).join('')}
-            
-            <tr class="total-row">
-              <td colspan="4" style="text-align: right; padding-right: 15px;">
-                إجمالي كشف حساب المستأجر (${filteredDues.length} شهر/استحقاق)
-              </td>
-              <td class="num-font gold-text">${sumRent.toLocaleString('ar-EG')} ج.م</td>
-              <td class="num-font gold-text">${sumCollected.toLocaleString('ar-EG')} ج.م</td>
-              <td class="num-font gold-text">${(sumRent - sumCollected).toLocaleString('ar-EG')} ج.م</td>
-              <td colspan="2" style="font-size: 8pt; text-align: center;">الرصيد المتبقي: ${(sumRent - sumCollected).toLocaleString('ar-EG')} ج.م</td>
-            </tr>
-          </tbody>
-        ` : reportType === 'property_monthly' ? (() => {
+            }).join('');
+
+            return `
+              <thead>
+                <tr>
+                  <th style="width: 4%;">#</th>
+                  <th style="width: 16%;">اسم المستأجر والعقار</th>
+                  <th style="width: 10%;">الشهر المالي</th>
+                  <th style="width: 10%;">تاريخ الاستحقاق</th>
+                  <th style="width: 12%;">الإيجار المطلوب</th>
+                  <th style="width: 12%;">المبلغ المحصل</th>
+                  <th style="width: 12%;">المتأخرات والرصيد</th>
+                  <th style="width: 14%;">الإيصال والتاريخ</th>
+                  <th style="width: 10%;">حالة السداد</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rowsHtml}
+                <tr class="total-row">
+                  <td colspan="4" style="text-align: right; padding-right: 15px;">
+                    إجمالي كشف حساب المستأجر (${allocations.length} شهر/استحقاق)
+                  </td>
+                  <td class="num-font gold-text">${totalRequired.toLocaleString('ar-EG')} ج.م</td>
+                  <td class="num-font gold-text">${totalCollected.toLocaleString('ar-EG')} ج.م</td>
+                  <td class="num-font gold-text" style="color: ${totalArrears > 0 ? '#dc2626' : '#059669'};">${totalArrears.toLocaleString('ar-EG')} ج.م</td>
+                  <td colspan="2" style="font-size: 8pt; text-align: center; font-weight: bold;">
+                    الرصيد المتبقي: ${totalArrears.toLocaleString('ar-EG')} ج.م
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            <!-- SUMMARY BOX IN ACCORDANCE WITH REQUIREMENT 4 (الملخص الشامل بأسفل التقرير) -->
+            <div style="margin-top: 20px; margin-bottom: 22px; background: #f8fafc; border: 2px solid #cbd5e1; border-radius: 12px; padding: 16px 20px; page-break-inside: avoid;">
+              <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1.5px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 14px;">
+                <div style="font-size: 10.5pt; font-weight: 900; color: #0f172a; display: flex; align-items: center; gap: 8px;">
+                  <span style="color: #b45309; font-size: 13pt;">📋</span>
+                  <span>ملخص التسوية المالية وسداد الإيصال الشامل</span>
+                </div>
+                <div style="font-size: 8pt; font-weight: 700; color: #475569; background: #e2e8f0; padding: 3px 10px; border-radius: 6px;">
+                  بيانات معتمدة من واقع السندات المقيدة
+                </div>
+              </div>
+
+              <!-- Metrics Grid: إجمالي المطلوب / إجمالي المحصل / المتأخرات والرصيد -->
+              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 14px;">
+                <div style="background: #ffffff; border: 1.5px solid #cbd5e1; border-top: 3px solid #d4a84f; border-radius: 10px; padding: 12px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                  <span style="display: block; font-size: 8.5pt; color: #64748b; font-weight: 800; margin-bottom: 5px;">إجمالي الإيجار المطلوب</span>
+                  <span class="num-font" style="font-size: 13pt; font-weight: 900; color: #0f172a;">${totalRequired.toLocaleString('ar-EG')} ج.م</span>
+                </div>
+
+                <div style="background: #ffffff; border: 1.5px solid #a7f3d0; border-top: 3px solid #059669; border-radius: 10px; padding: 12px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                  <span style="display: block; font-size: 8.5pt; color: #065f46; font-weight: 800; margin-bottom: 5px;">إجمالي المبلغ المحصل</span>
+                  <span class="num-font" style="font-size: 13pt; font-weight: 900; color: #059669;">${totalCollected.toLocaleString('ar-EG')} ج.م</span>
+                </div>
+
+                <div style="background: #ffffff; border: 1.5px solid ${totalArrears > 0 ? '#fecaca' : '#a7f3d0'}; border-top: 3px solid ${totalArrears > 0 ? '#dc2626' : '#059669'}; border-radius: 10px; padding: 12px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                  <span style="display: block; font-size: 8.5pt; color: ${totalArrears > 0 ? '#991b1b' : '#065f46'}; font-weight: 800; margin-bottom: 5px;">إجمالي المتأخرات والرصيد</span>
+                  <span class="num-font" style="font-size: 13pt; font-weight: 900; color: ${totalArrears > 0 ? '#dc2626' : '#059669'};">${totalArrears.toLocaleString('ar-EG')} ج.م</span>
+                </div>
+              </div>
+
+              <!-- Comprehensive Receipt Number and details -->
+              <div style="background: #f0f7ff; border: 1.5px dashed #3b82f6; border-radius: 10px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-size: 11pt;">🧾</span>
+                  <div>
+                    <span style="font-weight: 900; color: #1e3a8a; font-size: 9.5pt;">رقم الإيصال الشامل: </span>
+                    <span class="num-font" style="font-weight: 900; color: #1d4ed8; font-size: 10.5pt;">${comprehensiveReceiptNumberText}</span>
+                  </div>
+                </div>
+                <div style="font-size: 8pt; color: #2563eb; font-weight: 800; background: #ffffff; padding: 4px 10px; border-radius: 6px; border: 1px solid #bfdbfe;">
+                  تم تقسيم قيمة الإيصال برمجياً بالتوالي لتغطية الإيجار المطلوب لكل شهر دون تكرار الإجمالي في الصفوف
+                </div>
+              </div>
+            </div>
+
+            <table class="report-table" style="display: none;">
+            `;
+          })() : reportType === 'property_monthly' ? (() => {
           const pGroupsList = propertyStatementsData.propertyGroups;
 
           if (pGroupsList.length === 0) {

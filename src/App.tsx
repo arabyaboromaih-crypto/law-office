@@ -61,6 +61,7 @@ import {
   deleteFirestoreDoc,
   getFirestoreDocs
 } from './services/dbSync';
+import { reconnectFirestore } from './services/firebase';
 
 import { 
   Gavel, Calendar, Users, Building2, CreditCard, Shield, Archive, LayoutDashboard, LayoutGrid, Wallet, Phone, Mail, User as UserIcon, LogOut, ShieldAlert, CheckCircle, Clock, ClipboardList, Settings, Menu, X, ChevronLeft, ChevronRight, Lock, ShieldCheck, Scale, Download
@@ -256,11 +257,20 @@ export default function App() {
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
-    const handleOnline = () => setIsOnline(true);
+    const handleOnline = () => {
+      setIsOnline(true);
+      reconnectFirestore();
+    };
     const handleOffline = () => setIsOnline(false);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine) {
+        reconnectFirestore();
+      }
+    };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     // Hash routing for shortcuts
     const handleHashChange = () => {
@@ -295,6 +305,7 @@ export default function App() {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('hashchange', handleHashChange);
     };
   }, []);
