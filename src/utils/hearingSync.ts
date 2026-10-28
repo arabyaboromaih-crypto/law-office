@@ -17,19 +17,59 @@ export function convertArabicIndicDigits(str: string): string {
 }
 
 /**
- * Normalizes any date string (with Arabic-Indic numerals, slashes, or dashes) to standard Western YYYY-MM-DD.
+ * Normalizes any date string (with Arabic-Indic numerals, slashes, dots, or dashes) to standard Western YYYY-MM-DD.
  */
 export function normalizeHearingDate(d?: string): string {
   if (!d) return '';
-  const clean = convertArabicIndicDigits(d.trim()).replace(/\//g, '-');
+  const clean = convertArabicIndicDigits(d.trim()).replace(/[\/\.]/g, '-');
   const parts = clean.split('-');
   if (parts.length === 3) {
+    // If format was DD-MM-YYYY (parts[2] is 4 digits)
+    if (parts[2].length === 4 && parts[0].length <= 2) {
+      const y = parts[2];
+      const m = parts[1].padStart(2, '0');
+      const day = parts[0].padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
     const y = parts[0].padStart(4, '20');
     const m = parts[1].padStart(2, '0');
     const day = parts[2].padStart(2, '0');
     return `${y}-${m}-${day}`;
   }
   return clean;
+}
+
+/**
+ * Safely adds days to a date string in pure calendar math (at noon local time)
+ * to prevent any timezone offset or daylight savings shifts.
+ */
+export function addDaysToDateString(dateStr: string, daysToAdd: number): string {
+  const norm = normalizeHearingDate(dateStr);
+  if (!norm) return '';
+  const parts = norm.split('-');
+  if (parts.length !== 3) return norm;
+  const y = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  const d = parseInt(parts[2], 10);
+  if (isNaN(y) || isNaN(m) || isNaN(d)) return norm;
+  // Initialize at noon (12:00:00) so +/- 1h timezone / DST differences can never change the date
+  const dt = new Date(y, m - 1, d, 12, 0, 0);
+  dt.setDate(dt.getDate() + daysToAdd);
+  const resY = dt.getFullYear();
+  const resM = String(dt.getMonth() + 1).padStart(2, '0');
+  const resD = String(dt.getDate()).padStart(2, '0');
+  return `${resY}-${resM}-${resD}`;
+}
+
+/**
+ * Returns today's date in local calendar 'YYYY-MM-DD' format without timezone distortion.
+ */
+export function getTodayDateString(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 /**

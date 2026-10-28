@@ -20,7 +20,7 @@ import {
 import { Case, User, HearingSession, HearingSessionType } from '../types';
 import { CourtSelect } from '../utils/courts';
 import { getEffectiveStageInfo } from '../utils/stageUtils';
-import { getDetentionSessionId, normalizeHearingDate } from '../utils/hearingSync';
+import { getDetentionSessionId, normalizeHearingDate, getTodayDateString } from '../utils/hearingSync';
 
 interface AddHearingModalProps {
   isOpen: boolean;
@@ -59,7 +59,7 @@ export const AddHearingModal: React.FC<AddHearingModalProps> = ({
   const [circuit, setCircuit] = useState<string>('14 مدني');
   const [hall, setHall] = useState<string>('');
 
-  const [date, setDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState<string>(() => getTodayDateString());
   const [time, setTime] = useState<string>('09:00');
   const [timeAmPm, setTimeAmPm] = useState<string>('ص');
 
@@ -201,7 +201,7 @@ export const AddHearingModal: React.FC<AddHearingModalProps> = ({
         court: finalCourt || (effectiveIsDetention ? (detentionAuthority || 'النيابة العامة') : (effectiveIsExpert ? (expertOffice || 'مكتب الخبراء') : (targetCase.court || 'المحكمة المختصة'))),
         circuit: circuit || (effectiveIsDetention ? 'غرفة المشورة / التجديدات' : (effectiveIsExpert ? 'مكتب الخبراء' : (targetCase.circuit || 'الدائرة المختصة'))),
         type: targetCase.type,
-        date: date,
+        date: normDate || date,
         time: finalTime,
         subject: finalSubject,
         status: 'pending',

@@ -10,7 +10,16 @@ import {
   ChevronRight, ChevronLeft, CheckCircle2, AlertCircle, RefreshCw, X, FileText, Camera, Plus, Edit, FolderOpen, Trash2,
   Sparkles, Filter, ShieldAlert, CheckCircle, TrendingUp, Layers, MapPin, UserCheck, Scale, Building, Lock
 } from 'lucide-react';
-import { extractHearingDate, deduplicateSessions, normalizeHearingDate, findMatchingSession, generateExpectedAutoSessionsForCase, isCaseReferredToCourt } from '../utils/hearingSync';
+import { 
+  extractHearingDate, 
+  deduplicateSessions, 
+  normalizeHearingDate, 
+  findMatchingSession, 
+  generateExpectedAutoSessionsForCase, 
+  isCaseReferredToCourt,
+  addDaysToDateString,
+  getTodayDateString
+} from '../utils/hearingSync';
 import { toAr } from '../utils/arabicNumbers';
 import { CourtSelect } from '../utils/courts';
 import { useBackHandler } from '../utils/navigationManager';
@@ -36,21 +45,10 @@ interface AgendaPanelProps {
 export default function AgendaPanel({ 
   sessions: rawSessions, cases, users, currentUser, onAddSession, onUpdateSession, onDeleteSession, onNavigateToTab, onSearchCase, onOpenCaseFile, onUpdateCase
 }: AgendaPanelProps) {
-  // Deduplicate all sessions per (caseId + date + sessionCategory) strictly
-  // Automatically includes expected detention renewal sessions from cases when renewal dates are specified
+  // Unified Single Source of Truth: rawSessions strictly mirrors the live Firestore sessions collection
   const sessions = useMemo(() => {
-    const autoDetentionSessions: HearingSession[] = [];
-    cases.forEach(c => {
-      if ((c.isInvestigationActive || (c.detentionRenewals && c.detentionRenewals.length > 0)) && !isCaseReferredToCourt(c)) {
-        const expected = generateExpectedAutoSessionsForCase(c, users);
-        const detSessions = expected.filter(s => isDetentionSession(s, c, cases));
-        autoDetentionSessions.push(...detSessions);
-      }
-    });
-
-    const combined = [...(rawSessions || []), ...autoDetentionSessions];
-    return deduplicateSessions(combined, cases);
-  }, [rawSessions, cases, users]);
+    return deduplicateSessions(rawSessions || [], cases);
+  }, [rawSessions, cases]);
   
   const getDynamicDateString = (date: Date, options: Intl.DateTimeFormatOptions) => {
     const system = localStorage.getItem('romeih_numbering_system') || 'arabic';
@@ -65,9 +63,15 @@ export default function AgendaPanel({
     return `${year}-${month}-${day}`;
   };
   
+  // Setup Today String safely in local calendar
+  const todayStr = useMemo(() => getTodayDateString(), []);
+
   // States
   const [viewMode, setViewMode] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('daily');
-  const [currentDateState, setCurrentDateState] = useState(new Date()); // Baseline date
+  const [currentDateState, setCurrentDateState] = useState(() => {
+    const [y, m, d] = getTodayDateString().split('-').map(Number);
+    return new Date(y, m - 1, d, 12, 0, 0);
+  }); // Baseline date at noon to prevent any timezone/DST drift
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCourt, setFilterCourt] = useState('الكل');
   const [filterLawyer, setFilterLawyer] = useState('الكل');
@@ -145,8 +149,7 @@ export default function AgendaPanel({
   });
   useBackHandler(!!editingSession, () => setEditingSession(null));
 
-  // Setup Today String
-  const todayStr = getLocalYYYYMMDD(new Date());
+  // renderSessionCategoryBadge
 
   const renderSessionCategoryBadge = (session: HearingSession, parentCase?: Case) => {
     const eff = getEffectiveStageInfo(parentCase, session);
@@ -473,7 +476,8 @@ export default function AgendaPanel({
   };
 
   const handleGoToToday = () => {
-    setCurrentDateState(new Date(todayStr));
+    const [y, m, d] = todayStr.split('-').map(Number);
+    setCurrentDateState(new Date(y, m - 1, d, 12, 0, 0));
   };
 
   // Daily View Filter
@@ -2807,11 +2811,7 @@ export default function AgendaPanel({
                               onClick={() => {
                                 setOutcomeDetentionDurationDays(4);
                                 if (outcomeSession?.date) {
-                                  const b = new Date(outcomeSession.date);
-                                  if (!isNaN(b.getTime())) {
-                                    b.setDate(b.getDate() + 4);
-                                    setNextHearingDate(b.toISOString().split('T')[0]);
-                                  }
+                                  setNextHearingDate(addDaysToDateString(outcomeSession.date, 4));
                                 }
                               }}
                               className={`px-1.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer ${
@@ -2825,11 +2825,7 @@ export default function AgendaPanel({
                               onClick={() => {
                                 setOutcomeDetentionDurationDays(15);
                                 if (outcomeSession?.date) {
-                                  const b = new Date(outcomeSession.date);
-                                  if (!isNaN(b.getTime())) {
-                                    b.setDate(b.getDate() + 15);
-                                    setNextHearingDate(b.toISOString().split('T')[0]);
-                                  }
+                                  setNextHearingDate(addDaysToDateString(outcomeSession.date, 15));
                                 }
                               }}
                               className={`px-1.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer ${
@@ -2843,11 +2839,7 @@ export default function AgendaPanel({
                               onClick={() => {
                                 setOutcomeDetentionDurationDays(45);
                                 if (outcomeSession?.date) {
-                                  const b = new Date(outcomeSession.date);
-                                  if (!isNaN(b.getTime())) {
-                                    b.setDate(b.getDate() + 45);
-                                    setNextHearingDate(b.toISOString().split('T')[0]);
-                                  }
+                                  setNextHearingDate(addDaysToDateString(outcomeSession.date, 45));
                                 }
                               }}
                               className={`px-1.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer ${
@@ -2967,11 +2959,7 @@ export default function AgendaPanel({
                         setDecision('تجديد حبس المتهم 4 أيام على ذمة التحقيقات');
                         setOutcomeDetentionDurationDays(4);
                         if (outcomeSession?.date) {
-                          const b = new Date(outcomeSession.date);
-                          if (!isNaN(b.getTime())) {
-                            b.setDate(b.getDate() + 4);
-                            setNextHearingDate(b.toISOString().split('T')[0]);
-                          }
+                          setNextHearingDate(addDaysToDateString(outcomeSession.date, 4));
                         }
                       }}
                       className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 rounded-lg text-[11px] font-bold cursor-pointer transition-all"
@@ -2984,11 +2972,7 @@ export default function AgendaPanel({
                         setDecision('تجديد حبس المتهم 15 يوماً على ذمة التحقيقات');
                         setOutcomeDetentionDurationDays(15);
                         if (outcomeSession?.date) {
-                          const b = new Date(outcomeSession.date);
-                          if (!isNaN(b.getTime())) {
-                            b.setDate(b.getDate() + 15);
-                            setNextHearingDate(b.toISOString().split('T')[0]);
-                          }
+                          setNextHearingDate(addDaysToDateString(outcomeSession.date, 15));
                         }
                       }}
                       className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 rounded-lg text-[11px] font-bold cursor-pointer transition-all"
@@ -3001,11 +2985,7 @@ export default function AgendaPanel({
                         setDecision('تجديد حبس المتهم 45 يوماً على ذمة التحقيقات');
                         setOutcomeDetentionDurationDays(45);
                         if (outcomeSession?.date) {
-                          const b = new Date(outcomeSession.date);
-                          if (!isNaN(b.getTime())) {
-                            b.setDate(b.getDate() + 45);
-                            setNextHearingDate(b.toISOString().split('T')[0]);
-                          }
+                          setNextHearingDate(addDaysToDateString(outcomeSession.date, 45));
                         }
                       }}
                       className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 rounded-lg text-[11px] font-bold cursor-pointer transition-all"

@@ -24,7 +24,7 @@ import WhatsAppShareButton from './WhatsAppShareButton';
 import SearchableClientDropdown from './SearchableClientDropdown';
 import { isExpertSession, isDetentionSession } from './SessionCard';
 import { getEffectiveStageInfo, computeCaseDegree } from '../utils/stageUtils';
-import { deduplicateSessions, normalizeCaseNumber, normalizeHearingDate } from '../utils/hearingSync';
+import { deduplicateSessions, normalizeCaseNumber, normalizeHearingDate, getTodayDateString } from '../utils/hearingSync';
 import { buildCaseShareText, copyTextToClipboard } from '../utils/caseShareUtils';
 import PartyRoleSelect, { capacityOptions, SearchableDropdown } from './PartyRoleSelect';
 
@@ -99,7 +99,7 @@ export default function SmartCaseFile({
       return false;
     });
     return deduplicateSessions(matched, [localCase])
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      .sort((a, b) => (normalizeHearingDate(a.date) || a.date || '').localeCompare(normalizeHearingDate(b.date) || b.date || ''));
   }, [sessions, localCase]);
 
   // 1. Audit Log/Timeline Helper (Safely preserves latest case state to prevent overwriting notes/files)
@@ -2830,9 +2830,16 @@ function SessionsTab({
 
   // Editing session decision states aligned with Agenda Panel
   const [editingSession, setEditingSession] = useState<HearingSession | null>(null);
+  const [isEditingFullSession, setIsEditingFullSession] = useState(false);
+  const [editSessDate, setEditSessDate] = useState('');
+  const [editSessTime, setEditSessTime] = useState('');
+  const [editSessSubject, setEditSessSubject] = useState('');
 
   useBackHandler(showAddForm, () => setShowAddForm(false));
-  useBackHandler(!!editingSession, () => setEditingSession(null));
+  useBackHandler(!!editingSession, () => {
+    setEditingSession(null);
+    setIsEditingFullSession(false);
+  });
   const [decision, setDecision] = useState('');
   const [nextHearingDate, setNextHearingDate] = useState('');
   const [sessionStatus, setSessionStatus] = useState<'pending' | 'completed' | 'postponed'>('pending');
@@ -2892,13 +2899,22 @@ function SessionsTab({
     const cleanNextDate = nextHearingDate ? nextHearingDate.trim() : undefined;
     const effectiveStatus: 'completed' | 'postponed' = (sessionStatus === 'postponed' || !!cleanNextDate) ? 'postponed' : 'completed';
 
+    const finalDate = (isEditingFullSession && editSessDate)
+      ? (normalizeHearingDate(editSessDate) || editSessDate)
+      : (normalizeHearingDate(editingSession.date) || editingSession.date);
+    const finalTime = (isEditingFullSession && editSessTime) ? editSessTime.trim() : (editingSession.time || '09:00');
+    const finalSubject = (isEditingFullSession && editSessSubject) ? editSessSubject.trim() : editingSession.subject;
+
     const updatedSess: HearingSession = {
       ...editingSession,
+      date: finalDate,
+      time: finalTime,
+      subject: finalSubject,
       status: (cleanDec || cleanNextDate) ? effectiveStatus : (sessionStatus || editingSession.status || 'pending'),
       court: outcomeCourt || editingSession.court,
       circuit: outcomeCircuit || editingSession.circuit,
       decision: cleanDec,
-      nextHearingDate: cleanNextDate,
+      nextHearingDate: cleanNextDate ? (normalizeHearingDate(cleanNextDate) || cleanNextDate) : undefined,
       whatHappened: whatHappened ? whatHappened.trim() : undefined,
       requirements: requirements ? requirements.trim() : undefined,
       rollPhotoUrl: isRollUploaded ? 'roll_attached_url' : undefined
@@ -2912,17 +2928,35 @@ function SessionsTab({
     if (cleanDec) {
       nextStatus = cleanNextDate ? `تأجلت للقرار: ${cleanDec}` : `صدر القرار: ${cleanDec}`;
     }
+
+    let updatedRenewals = localCase.detentionRenewals ? [...localCase.detentionRenewals] : [];
+    if (editingSession.isDetentionRenewal || editingSession.detentionRenewalId) {
+      const renId = editingSession.detentionRenewalId;
+      const oldNormDate = normalizeHearingDate(editingSession.date);
+      const matchIdx = updatedRenewals.findIndex(r => (renId && r.id === renId) || normalizeHearingDate(r.date || r.renewalDate) === oldNormDate);
+      if (matchIdx !== -1) {
+        updatedRenewals[matchIdx] = {
+          ...updatedRenewals[matchIdx],
+          date: finalDate,
+          renewalDate: finalDate,
+          notes: finalSubject || updatedRenewals[matchIdx].notes
+        };
+      }
+    }
+
     const freshCase: Case = {
       ...localCase,
       court: outcomeCourt || localCase.court,
       circuit: outcomeCircuit || localCase.circuit,
       status: nextStatus,
-      nextHearingDate: cleanNextDate,
-      noUpcomingHearing: !cleanNextDate
+      nextHearingDate: cleanNextDate || (isEditingFullSession ? finalDate : localCase.nextHearingDate),
+      detentionRenewals: updatedRenewals.length > 0 ? updatedRenewals : localCase.detentionRenewals,
+      noUpcomingHearing: !cleanNextDate && !localCase.nextHearingDate
     };
     setLocalCase?.(freshCase);
 
     setEditingSession(null);
+    setIsEditingFullSession(false);
   };
 
   return (
@@ -3000,7 +3034,13 @@ function SessionsTab({
                 ) : (
                   <Gavel className="w-5 h-5 text-amber-500" />
                 )}
-                {isDetentionSession(editingSession, localCase)
+                {isEditingFullSession
+                  ? (isDetentionSession(editingSession, localCase)
+                      ? 'تعديل بيانات وميعاد جلسة تجديد الحبس'
+                      : isExpertSession(editingSession)
+                      ? 'تعديل بيانات وميعاد جلسة الخبير'
+                      : 'تعديل بيانات وميعاد جلسة المحكمة')
+                  : isDetentionSession(editingSession, localCase)
                   ? isModalReadOnly
                     ? 'تفاصيل قرار جلسة تجديد الحبس الاحتياطي المعتمد'
                     : 'رصد وتعديل قرار جلسة تجديد الحبس المنعقدة بتاريخ ' + editingSession.date
@@ -3014,7 +3054,10 @@ function SessionsTab({
               </h3>
               <button
                 type="button"
-                onClick={() => setEditingSession(null)}
+                onClick={() => {
+                  setEditingSession(null);
+                  setIsEditingFullSession(false);
+                }}
                 className="text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 <X className="w-5 h-5" />
@@ -3022,6 +3065,51 @@ function SessionsTab({
             </div>
 
             <form onSubmit={(e) => { e.preventDefault(); handleSaveDecision(); }} className="space-y-4">
+              {isEditingFullSession && (
+                <div className="bg-amber-50/80 border border-amber-300 rounded-xl p-3 space-y-3">
+                  <div className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                    <Edit className="w-4 h-4 text-amber-700" />
+                    <span>تعديل بيانات الجلسة (الموعد والموضوع)</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        تاريخ انعقاد الجلسة <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={editSessDate}
+                        onChange={(e) => setEditSessDate(e.target.value)}
+                        required
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono text-right"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">وقت الجلسة</label>
+                      <input
+                        type="text"
+                        placeholder="09:00 ص"
+                        value={editSessTime}
+                        onChange={(e) => setEditSessTime(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-right"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      موضوع ومطلوب الجلسة <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="موضوع الجلسة أو الإجراء المطلوب"
+                      value={editSessSubject}
+                      onChange={(e) => setEditSessSubject(e.target.value)}
+                      required
+                      className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-right"
+                    />
+                  </div>
+                </div>
+              )}
               <div className={`grid grid-cols-2 gap-3 p-3 rounded-xl border ${
                 isDetentionSession(editingSession, localCase)
                   ? 'bg-rose-50/60 border-rose-200'
@@ -3229,7 +3317,10 @@ function SessionsTab({
                 <div className="flex gap-3">
                   <button
                     type="button"
-                    onClick={() => setEditingSession(null)}
+                    onClick={() => {
+                      setEditingSession(null);
+                      setIsEditingFullSession(false);
+                    }}
                     className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs px-4 py-2 rounded-lg font-semibold cursor-pointer"
                   >
                     {isModalReadOnly ? 'إغلاق' : 'إلغاء'}
@@ -3256,7 +3347,7 @@ function SessionsTab({
         ) : (
           <div className="divide-y divide-slate-100">
             {caseSessions.map((sess) => {
-              const todayStr = new Date().toISOString().split('T')[0];
+              const todayStr = getTodayDateString();
               const isToday = sess.date === todayStr;
               const isPast = sess.date < todayStr;
               const isFuture = sess.date > todayStr;
@@ -3342,6 +3433,10 @@ function SessionsTab({
                       <button
                         onClick={() => {
                           setEditingSession(sess);
+                          setIsEditingFullSession(true);
+                          setEditSessDate(sess.date || '');
+                          setEditSessTime(sess.time || '09:00');
+                          setEditSessSubject(sess.subject || '');
                           setDecision(sess.decision || '');
                           setNextHearingDate(sess.nextHearingDate || '');
                           setSessionStatus(sess.status || 'pending');
@@ -3376,6 +3471,10 @@ function SessionsTab({
                           <button
                             onClick={() => {
                               setEditingSession(sess);
+                              setIsEditingFullSession(false);
+                              setEditSessDate(sess.date || '');
+                              setEditSessTime(sess.time || '09:00');
+                              setEditSessSubject(sess.subject || '');
                               setDecision(sess.decision || '');
                               setNextHearingDate(sess.nextHearingDate || '');
                               setSessionStatus(sess.status || 'pending');
@@ -3408,6 +3507,10 @@ function SessionsTab({
                           <button
                             onClick={() => {
                               setEditingSession(sess);
+                              setIsEditingFullSession(false);
+                              setEditSessDate(sess.date || '');
+                              setEditSessTime(sess.time || '09:00');
+                              setEditSessSubject(sess.subject || '');
                               setDecision(sess.decision || '');
                               setNextHearingDate(sess.nextHearingDate || '');
                               setSessionStatus(sess.status || 'pending');
